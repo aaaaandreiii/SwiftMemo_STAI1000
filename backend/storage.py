@@ -21,8 +21,13 @@ class AppStore:
     def get_email(self, user_id: str, email_id: str) -> EmailRecord | None:
         return self.db.get_email(user_id, email_id)
 
-    def valid_emails(self, user_id: str, limit: int | None = None) -> list[EmailRecord]:
-        return self.db.valid_emails(user_id, limit=limit)
+    def valid_emails(
+        self,
+        user_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[EmailRecord]:
+        return self.db.valid_emails(user_id, limit=limit, offset=offset)
 
 
 STORE = AppStore()

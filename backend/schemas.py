@@ -83,6 +83,7 @@ class ProcessRequest(BaseModel):
     email: EmailRecord | None = None
     email_id: str | None = None
     limit: int = Field(default=5, ge=1, le=25)
+    offset: int = Field(default=0, ge=0)
 
 
 class ProcessedEmail(BaseModel):

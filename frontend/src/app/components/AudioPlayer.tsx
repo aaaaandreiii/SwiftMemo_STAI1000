@@ -20,6 +20,7 @@ export function AudioPlayer({ track, tenantId, onClose }: AudioPlayerProps) {
   const [duration, setDuration] = useState(1);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fallback, setFallback] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -27,20 +28,23 @@ export function AudioPlayer({ track, tenantId, onClose }: AudioPlayerProps) {
       setAudioUrl(null);
       setProgress(0);
       setPlaying(false);
+      setFallback(false);
       return;
     }
 
     let cancelled = false;
     let objectUrl: string | null = null;
     setLoading(true);
+    setFallback(false);
     setProgress(0);
     setPlaying(false);
 
     getSummaryAudio(tenantId, track.summaryId)
-      .then((blob) => {
+      .then(({ blob, fallback: isFallback }) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
         setAudioUrl(objectUrl);
+        setFallback(isFallback);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -127,7 +131,9 @@ export function AudioPlayer({ track, tenantId, onClose }: AudioPlayerProps) {
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="truncate text-sm">
-                <span className="text-muted-foreground">Briefing · </span>
+                <span className="text-muted-foreground">
+                  {loading ? "Loading audio" : fallback ? "Demo audio fallback" : "Briefing"} ·{" "}
+                </span>
                 {track.title}
               </span>
               <span className="shrink-0 font-mono text-xs text-muted-foreground">

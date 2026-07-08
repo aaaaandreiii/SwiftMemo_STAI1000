@@ -317,14 +317,14 @@ export function CopilotDrawer({
                 {mode === "chat" && hasConversation && (
                   <button
                     onClick={newChat}
-                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-[#10b981]/40 hover:text-foreground"
+                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs text-muted-foreground transition-all hover:border-[#10b981]/40 hover:text-foreground hover:shadow-[0_0_18px_-12px_#10b981]"
                   >
                     <Plus className="h-3.5 w-3.5" /> New
                   </button>
                 )}
                 <button
                   onClick={onClose}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary/50 hover:text-foreground"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-all hover:bg-secondary/50 hover:text-foreground hover:shadow-[0_0_18px_-12px_#10b981]"
                 >
                   <X className="h-[18px] w-[18px]" />
                 </button>
@@ -344,7 +344,7 @@ export function CopilotDrawer({
                   <button
                     key={m}
                     onClick={() => onModeChange(m)}
-                    className={`relative z-10 py-1.5 text-sm font-medium transition-colors ${
+                    className={`relative z-10 rounded-lg py-1.5 text-sm font-medium transition-all hover:shadow-[0_0_18px_-12px_#10b981] ${
                       mode === m ? "text-[#34d399]" : "text-muted-foreground"
                     }`}
                   >
@@ -410,14 +410,14 @@ export function CopilotDrawer({
                       <div className="flex gap-1">
                         <button
                           onClick={generateDraft}
-                          className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground"
+                        className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-foreground"
                           title="Regenerate"
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={copyDraft}
-                          className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-[#10b981]"
+                        className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:text-[#10b981]"
                           title="Copy"
                         >
                           {copied ? (
@@ -543,7 +543,7 @@ export function CopilotDrawer({
                         <button
                           key={s.label}
                           onClick={() => ask(s.label)}
-                          className="group flex items-center gap-2.5 rounded-xl border border-border bg-secondary/30 px-3 py-2.5 text-left text-sm transition-colors hover:border-[#10b981]/50 hover:bg-[#10b981]/10"
+                          className="group flex items-center gap-2.5 rounded-xl border border-border bg-secondary/30 px-3 py-2.5 text-left text-sm transition-all hover:border-[#10b981]/50 hover:bg-[#10b981]/10 hover:shadow-[0_0_18px_-12px_#10b981]"
                         >
                           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#10b981]/15 text-[#34d399]">
                             <s.icon className="h-4 w-4" />

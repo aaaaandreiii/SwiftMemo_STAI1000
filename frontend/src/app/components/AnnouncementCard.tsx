@@ -1,20 +1,30 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
+  CalendarPlus,
+  CheckCircle2,
   MessageSquareReply,
   Volume2,
   Tags,
   EyeOff,
   ChevronDown,
   Mail,
+  Pencil,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { CATEGORIES, categoryMeta, type Announcement, type CategoryKey } from "../data";
+import {
+  CATEGORIES,
+  categoryMeta,
+  type Announcement,
+  type CategoryKey,
+  type CustomTopic,
+} from "../data";
 
 const TODAY = new Date();
 TODAY.setHours(0, 0, 0, 0);
@@ -50,6 +60,7 @@ interface CardProps {
   onHide: (id: string) => void;
   onRecategorize: (id: string, cat: CategoryKey) => void;
   playing: boolean;
+  topicMatches: CustomTopic[];
 }
 
 export function AnnouncementCard({
@@ -59,11 +70,14 @@ export function AnnouncementCard({
   onHide,
   onRecategorize,
   playing,
+  topicMatches,
 }: CardProps) {
   const [showOriginal, setShowOriginal] = useState(false);
+  const [schoolworkAdded, setSchoolworkAdded] = useState(false);
   const meta = categoryMeta(a.category);
   const cd = countdownLabel(a.dueDate);
   const high = a.urgency >= 4;
+  const showSchoolworkAutomation = a.category === "Academic" && Boolean(a.dueDate);
 
   return (
     <motion.article
@@ -72,13 +86,17 @@ export function AnnouncementCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="glass group relative overflow-hidden rounded-2xl p-4"
+      className="glass group relative overflow-hidden rounded-2xl p-4 transition-all"
       style={
         high
           ? { boxShadow: `inset 0 0 0 1px ${cd.tone}55, 0 0 32px -12px ${cd.tone}` }
           : undefined
       }
     >
+      <span
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        style={{ boxShadow: `inset 0 0 0 1px ${meta.color}55, 0 0 34px -16px ${meta.color}` }}
+      />
       {high && (
         <span
           className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full opacity-30 blur-3xl"
@@ -118,6 +136,24 @@ export function AnnouncementCard({
         </span>
       </div>
 
+      {topicMatches.length > 0 && (
+        <div className="relative mt-2 flex flex-wrap gap-1.5">
+          {topicMatches.map((topic) => (
+            <span
+              key={topic.id}
+              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.68rem]"
+              style={{
+                borderColor: topic.enabled ? "#10b98144" : "var(--border)",
+                background: topic.enabled ? "#10b98114" : "rgba(255,255,255,0.03)",
+                color: topic.enabled ? "#6ee7b7" : "var(--muted-foreground)",
+              }}
+            >
+              #{topic.label}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Title + summary */}
       <h3 className="relative mt-3 text-[1.05rem] leading-snug">{a.title}</h3>
       <p className="relative mt-1.5 text-sm leading-relaxed text-muted-foreground">
@@ -133,6 +169,40 @@ export function AnnouncementCard({
           </li>
         ))}
       </ul>
+
+      {showSchoolworkAutomation && (
+        <div className="relative mt-3 flex flex-wrap items-center gap-1.5">
+          {schoolworkAdded ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#10b981]/35 bg-[#10b981]/10 px-2.5 py-1 text-xs text-[#34d399]">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Added to tasks/calendar
+            </span>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                TODO demo
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
+                <CalendarPlus className="h-3.5 w-3.5" />
+                Calendar demo
+              </span>
+              <button
+                onClick={() => {
+                  setSchoolworkAdded(true);
+                  toast.success("Schoolwork demo added", {
+                    description: "Local tasks/calendar state only.",
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#10b981]/35 px-2.5 py-1 text-xs text-[#34d399] transition-colors hover:bg-[#10b981]/10"
+              >
+                <CalendarPlus className="h-3.5 w-3.5" />
+                Add demo
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Show original */}
       <button
@@ -185,10 +255,11 @@ export function AnnouncementCard({
         <div className="ml-auto flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-secondary/50 hover:text-foreground"
+              className="relative grid h-8 w-8 place-items-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-secondary/50 hover:text-foreground"
               title="Recategorize"
             >
               <Tags className="h-4 w-4" />
+              <Pencil className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full bg-popover p-0.5 text-[#34d399]" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="glass w-44">
               {CATEGORIES.map((c) => (

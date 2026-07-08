@@ -129,6 +129,12 @@ class RagService:
         ]
 
     def answer(self, user_id: str, message: str, session_id: str, top_k: int) -> ChatResponse:
+        small_talk = _small_talk_answer(message)
+        if small_talk is not None:
+            self.db.add_chat_message(user_id, session_id, "user", message)
+            self.db.add_chat_message(user_id, session_id, "assistant", small_talk)
+            return ChatResponse(answer=small_talk, session_id=session_id, sources=[])
+
         history = self.db.chat_history(
             user_id,
             session_id,
@@ -236,6 +242,58 @@ def _history_to_text(history: list[tuple[str, str]], message: str) -> str:
         return message
     prior = "\n".join(f"{role}: {content}" for role, content in history[-6:])
     return f"{prior}\nFollow-up question: {message}"
+
+
+def _small_talk_answer(message: str) -> str | None:
+    normalized = re.sub(r"[^a-z0-9\s']+", " ", message.lower()).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    if not normalized:
+        return (
+            "Ask me about your archived announcements, deadlines, requirements, "
+            "or email drafts and I will use your private SwiftMemo archive."
+        )
+
+    greetings = {
+        "hi",
+        "hello",
+        "hey",
+        "hiya",
+        "yo",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    }
+    thanks = {"thanks", "thank you", "ty", "thx", "appreciate it"}
+    acknowledgements = {"ok", "okay", "k", "cool", "nice", "got it"}
+    identity_prompts = {
+        "who are you",
+        "what are you",
+        "what can you do",
+        "help",
+        "help me",
+        "how are you",
+        "how's it going",
+    }
+
+    if normalized in greetings:
+        return (
+            "Hi. Ask me about deadlines, requirements, payments, campus access, "
+            "or any announcement in your SwiftMemo archive."
+        )
+    if normalized in thanks:
+        return "You are welcome. I can check the archive again whenever you need a deadline or requirement."
+    if normalized in acknowledgements:
+        return "Got it. Send an announcement question when you are ready."
+    if normalized in identity_prompts:
+        return (
+            "I am the SwiftMemo copilot. I answer questions using your tenant-scoped "
+            "announcement archive and can help draft concise replies."
+        )
+
+    words = normalized.split()
+    if len(words) <= 3 and all(word in greetings | thanks | acknowledgements for word in words):
+        return "Got it. Ask me an archive question whenever you are ready."
+    return None
 
 
 def _chunks_to_context(chunks: list[RetrievedChunk]) -> str:

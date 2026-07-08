@@ -148,7 +148,12 @@ class SwiftMemoDB:
         )
         return _row_to_email(row) if row else None
 
-    def valid_emails(self, user_id: str, limit: int | None = None) -> list[EmailRecord]:
+    def valid_emails(
+        self,
+        user_id: str,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[EmailRecord]:
         sql = """
             SELECT * FROM emails
             WHERE user_id = ? AND guardrail_valid = 1
@@ -156,8 +161,11 @@ class SwiftMemoDB:
         """
         params: tuple[Any, ...] = (user_id,)
         if limit is not None:
-            sql += " LIMIT ?"
-            params = (user_id, limit)
+            sql += " LIMIT ? OFFSET ?"
+            params = (user_id, limit, offset)
+        elif offset:
+            sql += " LIMIT -1 OFFSET ?"
+            params = (user_id, offset)
         rows = self._fetchall(sql, params)
         return [_row_to_email(row) for row in rows]
 

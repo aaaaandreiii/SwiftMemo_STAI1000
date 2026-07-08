@@ -35,16 +35,20 @@ export function Metrics(props: MetricsProps) {
             type="button"
             aria-pressed={active}
             onClick={() => props.onSelect(c.id)}
-            className="glass flex min-w-0 items-center gap-3 rounded-2xl p-3.5 text-left transition-all hover:border-[#10b981]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10b981]/50"
+            className="glass group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl p-3.5 text-left transition-all hover:border-[#10b981]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10b981]/50"
             style={active ? { boxShadow: `inset 0 0 0 1px ${c.color}99` } : undefined}
           >
             <span
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+              className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ boxShadow: `inset 0 0 0 1px ${c.color}55, 0 0 26px -16px ${c.color}` }}
+            />
+            <span
+              className="relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-xl"
               style={{ background: c.color + "1a", color: c.color }}
             >
               <Icon className="h-5 w-5" />
             </span>
-            <div className="min-w-0">
+            <div className="relative z-10 min-w-0">
               <motion.div
                 key={c.value}
                 initial={{ opacity: 0, y: -4 }}

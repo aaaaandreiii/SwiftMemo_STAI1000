@@ -188,10 +188,10 @@ def process_email(
     )
 
 
-def process_batch(user_id: str, limit: int) -> list[ProcessedEmail]:
-    emails = DATABASE.valid_emails(user_id, limit=limit)
+def process_batch(user_id: str, limit: int, offset: int = 0) -> list[ProcessedEmail]:
+    emails = DATABASE.valid_emails(user_id, limit=limit, offset=offset)
     if not emails:
-        emails = load_mock_emails(limit=limit)
+        emails = load_mock_emails(limit=limit, offset=offset)
 
     processed: list[ProcessedEmail] = []
     for email in emails[:limit]:

@@ -5,6 +5,7 @@ import { Toaster, toast } from "sonner";
 
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
+import type { FeedWorkflowState } from "./components/Sidebar";
 import { Timeline, type TimelineDay } from "./components/Timeline";
 import { Metrics, type MetricFilter } from "./components/Metrics";
 import { AnnouncementCard } from "./components/AnnouncementCard";
@@ -22,12 +23,16 @@ import {
 import {
   CATEGORIES,
   TENANTS,
+  matchedCustomTopics,
   preferencesFromBackend,
   preferencesToBackend,
+  readCustomTopics,
   summaryToAnnouncement,
   toBackendCategory,
+  writeCustomTopics,
   type Announcement,
   type CategoryKey,
+  type CustomTopic,
 } from "./data";
 
 const ALL_ON = CATEGORIES.reduce(
@@ -35,6 +40,7 @@ const ALL_ON = CATEGORIES.reduce(
   {} as Record<CategoryKey, boolean>,
 );
 const INGEST_CHUNK_SIZE = 20;
+const PROCESS_BATCH_SIZE = 10;
 
 interface HealthState {
   online: boolean;
@@ -54,10 +60,16 @@ const sortDate = (value: string | null) =>
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unexpected error";
 
+const makeTopicId = (label: string) =>
+  `topic-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${Date.now()}`;
+
 export default function App() {
   const [tenant, setTenant] = useState(TENANTS[0]);
   const [query, setQuery] = useState("");
   const [prefs, setPrefs] = useState<Record<CategoryKey, boolean>>(ALL_ON);
+  const [customTopics, setCustomTopics] = useState<CustomTopic[]>(() =>
+    readCustomTopics(TENANTS[0].id),
+  );
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [metricFilter, setMetricFilter] = useState<MetricFilter>("visible");
   const [hidden, setHidden] = useState<string[]>([]);
@@ -69,15 +81,14 @@ export default function App() {
   const [context, setContext] = useState<Announcement | null>(null);
   const [audioTrack, setAudioTrack] = useState<Announcement | null>(null);
 
-  const [ingesting, setIngesting] = useState(false);
-  const [ingestCount, setIngestCount] = useState<number | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [processed, setProcessed] = useState<{ processed: number; rejected: number } | null>(
-    null,
-  );
-  const [lastIngest, setLastIngest] = useState<{ accepted: number; rejected: number } | null>(
-    null,
-  );
+  const [feedWorkflow, setFeedWorkflow] = useState<FeedWorkflowState>({
+    stage: "idle",
+    fetched: 0,
+    accepted: 0,
+    rejected: 0,
+    processed: 0,
+    batch: 0,
+  });
   const [health, setHealth] = useState<HealthState>({
     online: false,
     latencyMs: 0,
@@ -135,6 +146,10 @@ export default function App() {
   }, [refreshHealth]);
 
   useEffect(() => {
+    setCustomTopics(readCustomTopics(tenant.id));
+  }, [tenant.id]);
+
+  useEffect(() => {
     loadTenant();
   }, [loadTenant]);
 
@@ -151,27 +166,49 @@ export default function App() {
     const term = query.trim().toLowerCase();
     return items
       .filter((a) => (selectedDay ? a.dueDate === selectedDay : true))
-      .filter((a) =>
-        term
-          ? (a.title + a.summary + a.category + a.sourceSubject)
-              .toLowerCase()
-              .includes(term)
-          : true,
-      );
-  }, [items, selectedDay, query]);
+      .filter((a) => {
+        if (!term) return true;
+        const topicLabels = matchedCustomTopics(a, customTopics)
+          .map((topic) => topic.label)
+          .join(" ");
+        return (a.title + a.summary + a.category + a.sourceSubject + topicLabels)
+          .toLowerCase()
+          .includes(term);
+      });
+  }, [items, selectedDay, query, customTopics]);
+
+  const topicCounts = useMemo(
+    () =>
+      customTopics.reduce(
+        (acc, topic) => ({
+          ...acc,
+          [topic.id]: items.filter((a) =>
+            matchedCustomTopics(a, [topic]).some((match) => match.id === topic.id),
+          ).length,
+        }),
+        {} as Record<string, number>,
+      ),
+    [customTopics, items],
+  );
 
   const visibleFeedItems = useMemo(() => {
     return scopedItems
       .filter((a) => !hidden.includes(a.id))
       .filter((a) => prefs[a.category])
+      .filter((a) => !matchedCustomTopics(a, customTopics).some((topic) => !topic.enabled))
       .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
-  }, [scopedItems, hidden, prefs]);
+  }, [scopedItems, hidden, prefs, customTopics]);
 
   const filteredOutItems = useMemo(() => {
     return scopedItems
-      .filter((a) => hidden.includes(a.id) || !prefs[a.category])
+      .filter(
+        (a) =>
+          hidden.includes(a.id) ||
+          !prefs[a.category] ||
+          matchedCustomTopics(a, customTopics).some((topic) => !topic.enabled),
+      )
       .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
-  }, [scopedItems, hidden, prefs]);
+  }, [scopedItems, hidden, prefs, customTopics]);
 
   const criticalItems = useMemo(
     () => visibleFeedItems.filter((a) => a.urgency >= 4),
@@ -231,14 +268,58 @@ export default function App() {
     }
   };
 
-  const handleIngest = async () => {
-    if (ingesting) return;
-    setIngesting(true);
-    setIngestCount(0);
+  const updateTopics = (updater: (topics: CustomTopic[]) => CustomTopic[]) => {
+    setCustomTopics((current) => {
+      const next = updater(current);
+      writeCustomTopics(tenant.id, next);
+      return next;
+    });
+  };
+
+  const addCustomTopic = (label: string) => {
+    const cleaned = label.trim();
+    if (!cleaned) return;
+    const duplicate = customTopics.some(
+      (topic) => topic.label.toLowerCase() === cleaned.toLowerCase(),
+    );
+    if (duplicate) {
+      toast("Topic already exists", { description: cleaned });
+      return;
+    }
+    updateTopics((topics) => [
+      ...topics,
+      { id: makeTopicId(cleaned), label: cleaned, enabled: true },
+    ]);
+    toast.success("Topic added", { description: `${cleaned} will match future summaries.` });
+  };
+
+  const toggleCustomTopic = (id: string) => {
+    updateTopics((topics) =>
+      topics.map((topic) =>
+        topic.id === id ? { ...topic, enabled: !topic.enabled } : topic,
+      ),
+    );
+  };
+
+  const removeCustomTopic = (id: string) => {
+    updateTopics((topics) => topics.filter((topic) => topic.id !== id));
+  };
+
+  const handleFetchAndProcess = async () => {
+    if (feedWorkflow.stage === "fetching" || feedWorkflow.stage === "processing") return;
+    setFeedWorkflow({
+      stage: "fetching",
+      fetched: 0,
+      accepted: 0,
+      rejected: 0,
+      processed: 0,
+      batch: 1,
+    });
     try {
       let accepted = 0;
       let rejected = 0;
       let offset = 0;
+      let fetchBatch = 1;
 
       while (true) {
         const response = await ingestMockData(tenant.id, {
@@ -251,44 +332,68 @@ export default function App() {
         accepted += response.accepted_count;
         rejected += response.rejected_count;
         offset += batchCount;
-        setIngestCount(accepted + rejected);
-        setLastIngest({ accepted, rejected });
+        setFeedWorkflow({
+          stage: "fetching",
+          fetched: accepted + rejected,
+          accepted,
+          rejected,
+          processed: 0,
+          batch: fetchBatch,
+        });
 
         if (batchCount < INGEST_CHUNK_SIZE) break;
+        fetchBatch += 1;
       }
 
-      setProcessed(null);
       await refreshSummaries(tenant.id);
-      toast.success(`${accepted} announcements staged`, {
-        description: `${rejected} rejected by guardrails · ingested in ${INGEST_CHUNK_SIZE}-record chunks.`,
-      });
-    } catch (error) {
-      toast.error("Ingest failed", { description: errorMessage(error) });
-    } finally {
-      setIngesting(false);
-      setIngestCount(null);
-    }
-  };
 
-  const handleProcess = async () => {
-    if (processing) return;
-    setProcessing(true);
-    try {
-      const response = await processFeed(tenant.id, 25);
-      await refreshSummaries(tenant.id);
-      setProcessed({
-        processed: response.processed_count,
-        rejected: lastIngest?.rejected ?? 0,
+      let processed = 0;
+      let processBatch = 1;
+      setFeedWorkflow({
+        stage: "processing",
+        fetched: accepted + rejected,
+        accepted,
+        rejected,
+        processed,
+        batch: processBatch,
       });
-      toast.success("Feed processed", {
-        description: `${response.processed_count} classified · ${
-          lastIngest?.rejected ?? 0
-        } rejected by guardrails · stored to ChromaDB.`,
+
+      for (let processOffset = 0; processOffset < accepted; processOffset += PROCESS_BATCH_SIZE) {
+        const response = await processFeed(tenant.id, PROCESS_BATCH_SIZE, processOffset);
+        processed += response.processed_count;
+        setFeedWorkflow({
+          stage: "processing",
+          fetched: accepted + rejected,
+          accepted,
+          rejected,
+          processed,
+          batch: processBatch,
+        });
+        await refreshSummaries(tenant.id);
+        if (response.processed_count === 0) break;
+        processBatch += 1;
+      }
+
+      await refreshSummaries(tenant.id);
+      setFeedWorkflow({
+        stage: "completed",
+        fetched: accepted + rejected,
+        accepted,
+        rejected,
+        processed,
+        batch: Math.max(processBatch - 1, 0),
+      });
+      toast.success("Mock feed fetched and processed", {
+        description: `${accepted} accepted · ${rejected} rejected · ${processed} summarized.`,
       });
     } catch (error) {
-      toast.error("Processing failed", { description: errorMessage(error) });
-    } finally {
-      setProcessing(false);
+      const description = errorMessage(error);
+      setFeedWorkflow((current) => ({
+        ...current,
+        stage: "error",
+        error: description,
+      }));
+      toast.error("Fetch and process failed", { description });
     }
   };
 
@@ -349,12 +454,13 @@ export default function App() {
             prefs={prefs}
             onToggle={togglePref}
             counts={counts}
-            onIngest={handleIngest}
-            onProcess={handleProcess}
-            ingesting={ingesting}
-            ingestCount={ingestCount}
-            processing={processing}
-            processed={processed}
+            customTopics={customTopics}
+            topicCounts={topicCounts}
+            onAddTopic={addCustomTopic}
+            onToggleTopic={toggleCustomTopic}
+            onRemoveTopic={removeCustomTopic}
+            onFetchProcess={handleFetchAndProcess}
+            workflow={feedWorkflow}
             latencyMs={health.latencyMs}
             online={health.online}
             provider={health.provider}
@@ -383,12 +489,13 @@ export default function App() {
                   prefs={prefs}
                   onToggle={togglePref}
                   counts={counts}
-                  onIngest={handleIngest}
-                  onProcess={handleProcess}
-                  ingesting={ingesting}
-                  ingestCount={ingestCount}
-                  processing={processing}
-                  processed={processed}
+                  customTopics={customTopics}
+                  topicCounts={topicCounts}
+                  onAddTopic={addCustomTopic}
+                  onToggleTopic={toggleCustomTopic}
+                  onRemoveTopic={removeCustomTopic}
+                  onFetchProcess={handleFetchAndProcess}
+                  workflow={feedWorkflow}
                   latencyMs={health.latencyMs}
                   online={health.online}
                   provider={health.provider}
@@ -468,6 +575,7 @@ export default function App() {
                       onHide={hideCard}
                       onRecategorize={recategorize}
                       playing={audioTrack?.id === a.id}
+                      topicMatches={matchedCustomTopics(a, customTopics)}
                     />
                   ))}
                 </AnimatePresence>

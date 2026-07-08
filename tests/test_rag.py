@@ -36,3 +36,31 @@ def test_rag_retrieval_applies_user_where_filter(monkeypatch):
     assert len(chunks) == 1
     assert fake_collection.query_kwargs["where"] == {"user_id": "tenant-a"}
     assert fake_collection.query_kwargs["n_results"] == 3
+
+
+class FakeChatDB:
+    def __init__(self):
+        self.messages = []
+
+    def add_chat_message(self, user_id, session_id, role, content):
+        self.messages.append((user_id, session_id, role, content))
+
+
+def test_small_talk_chat_skips_retrieval_and_returns_no_sources():
+    service = RagService.__new__(RagService)
+    service.db = FakeChatDB()
+
+    def fail_retrieve(*args, **kwargs):
+        raise AssertionError("small-talk chat should not call retrieval")
+
+    service.retrieve = fail_retrieve
+
+    response = service.answer("tenant-a", "hi", "session-a", top_k=4)
+
+    assert response.session_id == "session-a"
+    assert response.sources == []
+    assert "SwiftMemo archive" in response.answer
+    assert service.db.messages == [
+        ("tenant-a", "session-a", "user", "hi"),
+        ("tenant-a", "session-a", "assistant", response.answer),
+    ]

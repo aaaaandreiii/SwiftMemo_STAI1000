@@ -98,7 +98,7 @@ def process(request: ProcessRequest, user_id: str = Depends(current_user)) -> Pr
                 raise HTTPException(status_code=404, detail=f"Unknown email_id: {request.email_id}")
             items = [process_email(email, user_id=user_id)]
         else:
-            items = process_batch(user_id=user_id, limit=request.limit)
+            items = process_batch(user_id=user_id, limit=request.limit, offset=request.offset)
         return ProcessResponse(processed_count=len(items), items=items)
     except HTTPException:
         raise

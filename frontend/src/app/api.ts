@@ -77,6 +77,11 @@ export interface FeedbackResponse {
   status: string;
 }
 
+export interface SummaryAudioResponse {
+  blob: Blob;
+  fallback: boolean;
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 async function request<T>(
@@ -125,11 +130,11 @@ export function ingestMockData(
   });
 }
 
-export function processFeed(userId: string, limit = 25): Promise<ProcessResponse> {
+export function processFeed(userId: string, limit = 25, offset = 0): Promise<ProcessResponse> {
   return request<ProcessResponse>("/api/process", {
     method: "POST",
     userId,
-    body: JSON.stringify({ limit }),
+    body: JSON.stringify({ limit, offset }),
   });
 }
 
@@ -193,7 +198,10 @@ export function sendFeedback(
   });
 }
 
-export async function getSummaryAudio(userId: string, summaryId: string): Promise<Blob> {
+export async function getSummaryAudio(
+  userId: string,
+  summaryId: string,
+): Promise<SummaryAudioResponse> {
   const response = await fetch(
     `${API_BASE}/api/summary/audio/${encodeURIComponent(summaryId)}`,
     {
@@ -203,5 +211,8 @@ export async function getSummaryAudio(userId: string, summaryId: string): Promis
   if (!response.ok) {
     throw new Error(`Audio request failed with status ${response.status}`);
   }
-  return response.blob();
+  return {
+    blob: await response.blob(),
+    fallback: response.headers.get("X-SwiftMemo-Audio-Fallback") === "true",
+  };
 }

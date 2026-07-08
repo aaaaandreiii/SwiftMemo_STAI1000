@@ -101,6 +101,12 @@ export interface Announcement {
   visibleInFeed: boolean;
 }
 
+export interface CustomTopic {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
 export function summaryToAnnouncement(item: SummaryItem): Announcement {
   const category = categoryByBackend(item.category);
   return {
@@ -122,6 +128,52 @@ export function summaryToAnnouncement(item: SummaryItem): Announcement {
   };
 }
 
+export function matchedCustomTopics(
+  announcement: Announcement,
+  topics: CustomTopic[],
+): CustomTopic[] {
+  const searchable = normalizeTopicText(
+    [
+      announcement.title,
+      announcement.summary,
+      announcement.sourceSubject,
+      announcement.sender,
+      announcement.original,
+    ].join(" "),
+  );
+  return topics.filter((topic) => {
+    const needle = normalizeTopicText(topic.label);
+    return needle.length > 0 && searchable.includes(needle);
+  });
+}
+
+export function topicStorageKey(tenantId: string): string {
+  return `swiftmemo:${tenantId}:custom-topics`;
+}
+
+export function readCustomTopics(tenantId: string): CustomTopic[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(topicStorageKey(tenantId));
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((topic) => ({
+        id: typeof topic.id === "string" ? topic.id : crypto.randomUUID(),
+        label: typeof topic.label === "string" ? topic.label.trim() : "",
+        enabled: typeof topic.enabled === "boolean" ? topic.enabled : true,
+      }))
+      .filter((topic) => topic.label.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export function writeCustomTopics(tenantId: string, topics: CustomTopic[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(topicStorageKey(tenantId), JSON.stringify(topics));
+}
+
 function summaryBullets(item: SummaryItem): string[] {
   const sentences = item.summary
     .split(/(?<=[.!?])\s+/)
@@ -131,4 +183,8 @@ function summaryBullets(item: SummaryItem): string[] {
   const deadline = item.deadline_date ? `Deadline: ${item.deadline_date}` : null;
   const category = `Category: ${categoryByBackend(item.category).key}`;
   return [...sentences, deadline, category].filter(Boolean) as string[];
+}
+
+function normalizeTopicText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
