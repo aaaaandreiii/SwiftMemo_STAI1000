@@ -20,15 +20,99 @@ Return only strict JSON:
 
 
 def validate_announcement(email: EmailRecord) -> GuardrailResult:
-    prompt = f"Validate this candidate announcement:\n\n{email_to_text(email)}"
-    response_text = invoke_llm(
-        [
-            SystemMessage(content=GUARDRAIL_SYSTEM_PROMPT),
-            HumanMessage(content=prompt),
-        ],
-        operation="guardrail_validation",
-        params={"email_id": email.id, "subject": email.subject},
-    )
-    parsed = extract_json_object(response_text)
-    return GuardrailResult.model_validate(parsed)
+    hard_reject = hard_reject_non_announcement(email)
+    if hard_reject:
+        return hard_reject
 
+    prompt = f"Validate this candidate announcement:\n\n{email_to_text(email)}"
+    try:
+        response_text = invoke_llm(
+            [
+                SystemMessage(content=GUARDRAIL_SYSTEM_PROMPT),
+                HumanMessage(content=prompt),
+            ],
+            operation="guardrail_validation",
+            params={"email_id": email.id, "subject": email.subject},
+        )
+        parsed = extract_json_object(response_text)
+        return GuardrailResult.model_validate(parsed)
+    except Exception:
+        return heuristic_validate_announcement(email)
+
+
+def hard_reject_non_announcement(email: EmailRecord) -> GuardrailResult | None:
+    sender = email.sender.lower()
+    subject = email.subject.lower()
+    body = email.body.lower()
+    text = f"{subject}\n{body}"
+
+    if "instructure.com" in sender and any(
+        phrase in text
+        for phrase in (
+            "assignment graded",
+            "has been graded",
+            "graded:",
+            "submission comment",
+        )
+    ):
+        return GuardrailResult(
+            is_valid=False,
+            reason="LMS activity notification, not an institutional announcement.",
+            confidence=0.96,
+        )
+
+    if any(term in text for term in ("limited time", "laptop sale", "discounted accessories")):
+        return GuardrailResult(
+            is_valid=False,
+            reason="Promotional message unrelated to institutional operations.",
+            confidence=0.97,
+        )
+
+    if any(term in text for term in ("dinner later", "where to eat", "are you free after class")):
+        return GuardrailResult(
+            is_valid=False,
+            reason="Personal message, not an institutional announcement.",
+            confidence=0.96,
+        )
+
+    return None
+
+
+def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
+    sender = email.sender.lower()
+    subject = email.subject.lower()
+    body = email.body.lower()
+    official_sender = sender.endswith("@dlsu.edu.ph") or sender.endswith(".dlsu.edu.ph")
+    hda_subject = subject.startswith("hda:") or "help desk announcement" in body
+    office_notice = "office" in body and any(
+        keyword in body
+        for keyword in (
+            "announces",
+            "reminds",
+            "advises",
+            "invites",
+            "will implement",
+            "will conduct",
+            "application deadline",
+            "not later than",
+        )
+    )
+    spam_terms = ("sale", "discount", "promo", "dinner", "eat near campus")
+
+    if (official_sender or hda_subject) and office_notice and not any(term in body for term in spam_terms):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Official-looking institutional announcement.",
+            confidence=0.82,
+        )
+    if official_sender and hda_subject:
+        return GuardrailResult(
+            is_valid=True,
+            reason="Official sender and HDA subject.",
+            confidence=0.74,
+        )
+    return GuardrailResult(
+        is_valid=False,
+        reason="Not an official institutional announcement.",
+        confidence=0.78,
+    )

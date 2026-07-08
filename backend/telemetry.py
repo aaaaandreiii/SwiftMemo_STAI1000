@@ -2,6 +2,8 @@ import json
 import time
 from contextlib import contextmanager
 from typing import Any, Iterator
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import mlflow
 
@@ -13,6 +15,8 @@ _AUTOLOG_ATTEMPTED = False
 def configure_mlflow(settings: Settings | None = None) -> bool:
     global _AUTOLOG_ATTEMPTED
     settings = settings or get_settings()
+    if not _tracking_uri_available(settings.mlflow_tracking_uri):
+        return False
     try:
         mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
         mlflow.set_experiment(settings.mlflow_experiment)
@@ -25,6 +29,17 @@ def configure_mlflow(settings: Settings | None = None) -> bool:
                 # effort because MLflow/LangChain compatibility varies by version.
                 pass
         return True
+    except Exception:
+        return False
+
+
+def _tracking_uri_available(uri: str) -> bool:
+    parsed = urlparse(uri)
+    if parsed.scheme not in {"http", "https"}:
+        return True
+    try:
+        with urlopen(f"{uri.rstrip('/')}/health", timeout=0.75) as response:
+            return response.status < 500
     except Exception:
         return False
 

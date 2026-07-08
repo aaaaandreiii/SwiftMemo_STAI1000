@@ -1,8 +1,19 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+
+CATEGORIES = (
+    "academic",
+    "finance",
+    "campus_access",
+    "health_safety",
+    "events",
+    "it_services",
+    "administrative",
+    "other",
+)
 
 Category = Literal[
     "academic",
@@ -56,6 +67,7 @@ class TriageSummary(BaseModel):
         description="ISO date if a deadline exists; otherwise null.",
     )
     category: Category
+    urgency_score: int = Field(ge=1, le=5)
 
     @field_validator("title", "summary")
     @classmethod
@@ -77,6 +89,8 @@ class ProcessedEmail(BaseModel):
     source_subject: str
     guardrail: GuardrailResult
     result: TriageSummary
+    summary_id: str | None = None
+    visible_in_feed: bool = True
     tool_observation: str | None = None
 
 
@@ -103,3 +117,83 @@ class ChatResponse(BaseModel):
     session_id: str
     sources: list[SourceDocument]
 
+
+class SummaryItem(BaseModel):
+    summary_id: str
+    email_id: str
+    source_subject: str
+    sender: str
+    email_date: datetime
+    title: str
+    summary: str
+    deadline_date: date | None = None
+    category: Category
+    urgency_score: int = Field(ge=1, le=5)
+    visible_in_feed: bool
+    created_at: datetime
+
+
+class SummariesResponse(BaseModel):
+    user_id: str
+    count: int
+    items: list[SummaryItem]
+
+
+class PreferencesUpdateRequest(BaseModel):
+    preferences: dict[str, bool]
+
+    @model_validator(mode="after")
+    def validate_categories(self) -> "PreferencesUpdateRequest":
+        invalid = sorted(set(self.preferences) - set(CATEGORIES))
+        if invalid:
+            raise ValueError(f"Unknown categories: {', '.join(invalid)}")
+        return self
+
+
+class PreferencesResponse(BaseModel):
+    user_id: str
+    preferences: dict[Category, bool]
+
+
+class DraftRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    session_id: str = Field(default="default")
+    top_k: int = Field(default=4, ge=1, le=8)
+    email_id: str | None = None
+
+
+class DraftResponse(BaseModel):
+    draft: str
+    session_id: str
+    sources: list[SourceDocument]
+
+
+class FeedbackRequest(BaseModel):
+    summary_id: str | None = None
+    email_id: str | None = None
+    override_category: Category
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def require_target(self) -> "FeedbackRequest":
+        if not self.summary_id and not self.email_id:
+            raise ValueError("summary_id or email_id is required")
+        return self
+
+
+class FeedbackResponse(BaseModel):
+    id: str
+    status: str
+
+
+class AudioSummaryMetadata(BaseModel):
+    summary_id: str
+    text: str
+    fallback: bool = True
+
+
+class NotificationPayload(BaseModel):
+    user_id: str
+    summary_id: str
+    deadline_date: date | None = None
+    status: str = "stubbed"

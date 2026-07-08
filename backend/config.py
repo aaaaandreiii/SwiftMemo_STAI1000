@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     huggingface_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     data_path: Path = Field(default=Path("data/mock_hdas.json"))
+    database_path: Path = Field(default=Path("data/swiftmemo.db"))
     chroma_dir: Path = Field(default=Path("chroma_data"))
-    chroma_collection: str = "swiftmemo_hda_memory_v2"
+    chroma_collection: str = "swiftmemo_private_memory_v3"
 
     mlflow_tracking_uri: str = "http://localhost:5000"
     mlflow_experiment: str = "SwiftMemo"

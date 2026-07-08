@@ -31,7 +31,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      - "2164:8000"
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:latest}
@@ -43,11 +43,13 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000
       CHROMA_DIR: /app/chroma_data
       DATA_PATH: /app/data/mock_hdas.json
+      DATABASE_PATH: /app/data/swiftmemo.db
     depends_on:
       mlflow:
         condition: service_healthy
     volumes:
       - ./chroma_data:/app/chroma_data
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -59,7 +61,7 @@ services:
       context: .
       dockerfile: Dockerfile.streamlit
     ports:
-      - "8501:8501"
+      - "2144:8501"
     environment:
       API_URL: http://api:8000
     depends_on:

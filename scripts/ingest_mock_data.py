@@ -10,6 +10,7 @@ def main() -> None:
     parser.add_argument("--api", default="http://localhost:8000", help="FastAPI base URL")
     parser.add_argument("--data", default="data/mock_hdas.json", help="Local mock dataset path")
     parser.add_argument("--limit", type=int, default=None, help="Optional number of records")
+    parser.add_argument("--user-id", default="andrei", help="Tenant X-User-ID header")
     args = parser.parse_args()
 
     dataset = json.loads(Path(args.data).read_text(encoding="utf-8"))
@@ -22,6 +23,7 @@ def main() -> None:
         response = requests.post(
             f"{args.api.rstrip('/')}/api/ingest",
             json={"email": record, "load_mock": False},
+            headers={"X-User-ID": args.user_id},
             timeout=180,
         )
         response.raise_for_status()
@@ -34,4 +36,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
