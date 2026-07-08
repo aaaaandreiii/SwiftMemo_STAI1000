@@ -17,6 +17,14 @@ function figmaAssetResolver() {
 }
 
 const apiTarget = process.env.VITE_API_PROXY_TARGET ?? process.env.API_URL ?? "http://localhost:8000";
+const allowedHostsEnv = process.env.VITE_ALLOWED_HOSTS ?? "swiftmemo.balingit.me";
+const allowedHosts =
+  allowedHostsEnv.trim().toLowerCase() === "true"
+    ? true
+    : allowedHostsEnv
+        .split(",")
+        .map((host) => host.trim())
+        .filter(Boolean);
 
 export default defineConfig({
   plugins: [
@@ -35,6 +43,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 7860,
+    allowedHosts,
     proxy: {
       "/api": {
         target: apiTarget,
@@ -45,6 +54,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 7860,
+    allowedHosts,
   },
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
