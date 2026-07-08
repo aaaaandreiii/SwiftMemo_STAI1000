@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+.DS_Store
+**/.DS_Store
 .pytest_cache/
 .venv/
 venv/
@@ -8,4 +10,7 @@ chroma_data/
 .env
 cloudflare_credentials.md
 scratchpad.md
-
+Website_redesign/
+frontend/node_modules/
+frontend/dist/
+frontend/.DS_Store

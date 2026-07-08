@@ -56,14 +56,14 @@ services:
       timeout: 5s
       retries: 12
 
-  streamlit:
+  frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.streamlit
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "7860:8501"
+      - "7860:7860"
     environment:
-      API_URL: http://api:8000
+      VITE_API_PROXY_TARGET: http://api:8000
     depends_on:
       api:
         condition: service_healthy

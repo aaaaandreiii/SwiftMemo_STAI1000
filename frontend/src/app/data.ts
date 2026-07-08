@@ -1,0 +1,134 @@
+import {
+  GraduationCap,
+  Wallet,
+  ShieldCheck,
+  HeartPulse,
+  CalendarDays,
+  Cpu,
+  Building2,
+  CircleHelp,
+  type LucideIcon,
+} from "lucide-react";
+import type { BackendCategory, SummaryItem } from "./api";
+
+export type CategoryKey =
+  | "Academic"
+  | "Finance"
+  | "Campus Access"
+  | "Health & Safety"
+  | "Events"
+  | "IT Services"
+  | "Administrative"
+  | "Other";
+
+export interface Category {
+  key: CategoryKey;
+  backendKey: BackendCategory;
+  icon: LucideIcon;
+  color: string; // accent color for badges/glow
+}
+
+export const CATEGORIES: Category[] = [
+  { key: "Academic", backendKey: "academic", icon: GraduationCap, color: "#34d399" },
+  { key: "Finance", backendKey: "finance", icon: Wallet, color: "#fbbf24" },
+  { key: "Campus Access", backendKey: "campus_access", icon: ShieldCheck, color: "#38bdf8" },
+  { key: "Health & Safety", backendKey: "health_safety", icon: HeartPulse, color: "#f43f5e" },
+  { key: "Events", backendKey: "events", icon: CalendarDays, color: "#a78bfa" },
+  { key: "IT Services", backendKey: "it_services", icon: Cpu, color: "#22d3ee" },
+  { key: "Administrative", backendKey: "administrative", icon: Building2, color: "#94a3b8" },
+  { key: "Other", backendKey: "other", icon: CircleHelp, color: "#cbd5e1" },
+];
+
+export const categoryMeta = (key: CategoryKey): Category =>
+  CATEGORIES.find((c) => c.key === key) ?? CATEGORIES[0];
+
+export const categoryByBackend = (key: BackendCategory): Category =>
+  CATEGORIES.find((c) => c.backendKey === key) ?? CATEGORIES[CATEGORIES.length - 1];
+
+export const toBackendCategory = (key: CategoryKey): BackendCategory =>
+  categoryMeta(key).backendKey;
+
+export const preferencesFromBackend = (
+  preferences: Partial<Record<BackendCategory, boolean>>,
+): Record<CategoryKey, boolean> =>
+  CATEGORIES.reduce(
+    (acc, category) => ({
+      ...acc,
+      [category.key]: preferences[category.backendKey] ?? true,
+    }),
+    {} as Record<CategoryKey, boolean>,
+  );
+
+export const preferencesToBackend = (
+  preferences: Record<CategoryKey, boolean>,
+): Record<BackendCategory, boolean> =>
+  CATEGORIES.reduce(
+    (acc, category) => ({
+      ...acc,
+      [category.backendKey]: preferences[category.key],
+    }),
+    {} as Record<BackendCategory, boolean>,
+  );
+
+export interface Tenant {
+  id: string;
+  name: string;
+  role: string;
+  initials: string;
+}
+
+export const TENANTS: Tenant[] = [
+  { id: "andrei", name: "Andrei Cruz", role: "BS Computer Science · III", initials: "AC" },
+  { id: "audric", name: "Audric Reyes", role: "BS Accountancy · II", initials: "AR" },
+  { id: "sophia", name: "Sophia Lim", role: "Faculty · CCS", initials: "SL" },
+];
+
+export interface Announcement {
+  id: string;
+  summaryId: string;
+  emailId: string;
+  backendCategory: BackendCategory;
+  category: CategoryKey;
+  urgency: 1 | 2 | 3 | 4 | 5;
+  title: string;
+  summary: string;
+  bullets: string[];
+  dueDate: string | null; // ISO date
+  received: string; // ISO date
+  original: string;
+  sender: string;
+  sourceSubject: string;
+  visibleInFeed: boolean;
+}
+
+export function summaryToAnnouncement(item: SummaryItem): Announcement {
+  const category = categoryByBackend(item.category);
+  return {
+    id: item.summary_id,
+    summaryId: item.summary_id,
+    emailId: item.email_id,
+    backendCategory: item.category,
+    category: category.key,
+    urgency: item.urgency_score,
+    title: item.title,
+    summary: item.summary,
+    bullets: summaryBullets(item),
+    dueDate: item.deadline_date,
+    received: item.email_date.slice(0, 10),
+    original: `${item.source_subject}\n\n${item.summary}`,
+    sender: item.sender,
+    sourceSubject: item.source_subject,
+    visibleInFeed: item.visible_in_feed,
+  };
+}
+
+function summaryBullets(item: SummaryItem): string[] {
+  const sentences = item.summary
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  const deadline = item.deadline_date ? `Deadline: ${item.deadline_date}` : null;
+  const category = `Category: ${categoryByBackend(item.category).key}`;
+  return [...sentences, deadline, category].filter(Boolean) as string[];
+}

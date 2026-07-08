@@ -15,7 +15,7 @@ docker-compose up --build
 
 Open:
 
-- Streamlit UI: http://localhost:8501
+- React/Vite UI: http://localhost:7860
 - FastAPI docs: http://localhost:8000/docs
 - MLflow: http://localhost:5001
 
@@ -47,7 +47,7 @@ curl http://your-ollama-server:11434/api/tags
 
 ```mermaid
 flowchart LR
-    UI[Streamlit UI] --> API[FastAPI Backend]
+    UI[React/Vite UI] --> API[FastAPI Backend]
     API --> SQLite[(SQLite Tenant Store)]
     API --> Guardrails[Official Announcement Guardrails]
     API --> Agent[LangGraph Processing Graph]
@@ -120,6 +120,7 @@ It prints JSON and logs to MLflow when tracking is reachable:
 ## Development Notes
 
 - Mock announcements live in `data/mock_hdas.json`.
+- The React frontend lives in `frontend/` and calls FastAPI through relative `/api` and `/health` paths. In Docker, Vite proxies those paths to `http://api:8000`.
 - Real received emails should be sanitized into fixture JSON instead of connecting Gmail directly for this Midterm MVP.
 - The current fixture has 8 valid announcements and 3 rejected records. `real-hda-2026-001` is a valid OVPERI exchange announcement; `hda-2026-008` is rejected because Canvas/Instructure grade notifications are LMS activity notices, not institutional HDAs.
 - `backend/database.py` is the SQLite source of truth for tenant-scoped records.
@@ -149,6 +150,7 @@ curl -s -X POST http://localhost:8000/api/process \
 ## Verification
 
 ```bash
+npm --prefix frontend run build
 pytest
 python evaluate.py
 docker-compose config
