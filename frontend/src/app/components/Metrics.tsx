@@ -1,16 +1,26 @@
 import { Inbox, AlarmClock, EyeOff } from "lucide-react";
 import { motion } from "motion/react";
 
+export type MetricFilter = "visible" | "critical" | "filtered";
+
 interface MetricsProps {
   visible: number;
   critical: number;
   hidden: number;
+  active: MetricFilter;
+  onSelect: (filter: MetricFilter) => void;
 }
 
-const cards = (m: MetricsProps) => [
-  { label: "Visible in feed", value: m.visible, icon: Inbox, color: "#10b981" },
-  { label: "Critical deadlines", value: m.critical, icon: AlarmClock, color: "#f43f5e" },
-  { label: "Filtered out", value: m.hidden, icon: EyeOff, color: "#94a3b8" },
+const cards = (m: Pick<MetricsProps, "visible" | "critical" | "hidden">) => [
+  { id: "visible" as const, label: "Visible in feed", value: m.visible, icon: Inbox, color: "#10b981" },
+  {
+    id: "critical" as const,
+    label: "Critical deadlines",
+    value: m.critical,
+    icon: AlarmClock,
+    color: "#f43f5e",
+  },
+  { id: "filtered" as const, label: "Filtered out", value: m.hidden, icon: EyeOff, color: "#94a3b8" },
 ];
 
 export function Metrics(props: MetricsProps) {
@@ -18,10 +28,15 @@ export function Metrics(props: MetricsProps) {
     <div className="grid grid-cols-3 gap-3">
       {cards(props).map((c) => {
         const Icon = c.icon;
+        const active = props.active === c.id;
         return (
-          <div
+          <button
             key={c.label}
-            className="glass flex items-center gap-3 rounded-2xl p-3.5"
+            type="button"
+            aria-pressed={active}
+            onClick={() => props.onSelect(c.id)}
+            className="glass flex min-w-0 items-center gap-3 rounded-2xl p-3.5 text-left transition-all hover:border-[#10b981]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10b981]/50"
+            style={active ? { boxShadow: `inset 0 0 0 1px ${c.color}99` } : undefined}
           >
             <span
               className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
@@ -40,7 +55,7 @@ export function Metrics(props: MetricsProps) {
               </motion.div>
               <div className="truncate text-xs text-muted-foreground">{c.label}</div>
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

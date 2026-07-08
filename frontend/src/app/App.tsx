@@ -6,7 +6,7 @@ import { Toaster, toast } from "sonner";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { Timeline, type TimelineDay } from "./components/Timeline";
-import { Metrics } from "./components/Metrics";
+import { Metrics, type MetricFilter } from "./components/Metrics";
 import { AnnouncementCard } from "./components/AnnouncementCard";
 import { CopilotDrawer } from "./components/CopilotDrawer";
 import { AudioPlayer } from "./components/AudioPlayer";
@@ -59,6 +59,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [prefs, setPrefs] = useState<Record<CategoryKey, boolean>>(ALL_ON);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [metricFilter, setMetricFilter] = useState<MetricFilter>("visible");
   const [hidden, setHidden] = useState<string[]>([]);
   const [items, setItems] = useState<Announcement[]>([]);
   const [loadingSummaries, setLoadingSummaries] = useState(true);
@@ -107,6 +108,7 @@ export default function App() {
     setLoadingSummaries(true);
     setHidden([]);
     setSelectedDay(null);
+    setMetricFilter("visible");
     setContext(null);
     setAudioTrack(null);
     try {
@@ -145,23 +147,52 @@ export default function App() {
     return c;
   }, [items]);
 
-  const visibleItems = useMemo(() => {
+  const scopedItems = useMemo(() => {
+    const term = query.trim().toLowerCase();
     return items
-      .filter((a) => !hidden.includes(a.id))
-      .filter((a) => prefs[a.category])
       .filter((a) => (selectedDay ? a.dueDate === selectedDay : true))
       .filter((a) =>
-        query.trim()
+        term
           ? (a.title + a.summary + a.category + a.sourceSubject)
               .toLowerCase()
-              .includes(query.toLowerCase())
+              .includes(term)
           : true,
-      )
-      .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
-  }, [items, hidden, prefs, selectedDay, query]);
+      );
+  }, [items, selectedDay, query]);
 
-  const critical = visibleItems.filter((a) => a.urgency >= 4).length;
-  const hiddenCount = items.length - visibleItems.length;
+  const visibleFeedItems = useMemo(() => {
+    return scopedItems
+      .filter((a) => !hidden.includes(a.id))
+      .filter((a) => prefs[a.category])
+      .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
+  }, [scopedItems, hidden, prefs]);
+
+  const filteredOutItems = useMemo(() => {
+    return scopedItems
+      .filter((a) => hidden.includes(a.id) || !prefs[a.category])
+      .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
+  }, [scopedItems, hidden, prefs]);
+
+  const criticalItems = useMemo(
+    () => visibleFeedItems.filter((a) => a.urgency >= 4),
+    [visibleFeedItems],
+  );
+
+  const feedItems = useMemo(() => {
+    if (metricFilter === "critical") return criticalItems;
+    if (metricFilter === "filtered") return filteredOutItems;
+    return visibleFeedItems;
+  }, [metricFilter, criticalItems, filteredOutItems, visibleFeedItems]);
+
+  const metricFilterLabel =
+    metricFilter === "critical"
+      ? "Critical deadlines"
+      : metricFilter === "filtered"
+        ? "Filtered out"
+        : null;
+
+  const critical = criticalItems.length;
+  const hiddenCount = filteredOutItems.length;
 
   const timelineDays: TimelineDay[] = useMemo(() => {
     const start = today();
@@ -389,7 +420,13 @@ export default function App() {
 
               <Timeline days={timelineDays} selected={selectedDay} onSelect={setSelectedDay} />
 
-              <Metrics visible={visibleItems.length} critical={critical} hidden={hiddenCount} />
+              <Metrics
+                visible={visibleFeedItems.length}
+                critical={critical}
+                hidden={hiddenCount}
+                active={metricFilter}
+                onSelect={setMetricFilter}
+              />
 
               {/* Feed header */}
               <div className="flex items-center justify-between pt-1">
@@ -406,6 +443,9 @@ export default function App() {
                         })}
                       </span>
                     )}
+                    {metricFilterLabel && (
+                      <span className="text-[#10b981]"> · {metricFilterLabel}</span>
+                    )}
                   </span>
                 </div>
                 <button
@@ -419,7 +459,7 @@ export default function App() {
               {/* Cards */}
               <div className="flex flex-col gap-3 pb-6">
                 <AnimatePresence mode="popLayout">
-                  {visibleItems.map((a) => (
+                  {feedItems.map((a) => (
                     <AnnouncementCard
                       key={a.id}
                       a={a}
@@ -439,7 +479,7 @@ export default function App() {
                   </div>
                 )}
 
-                {!loadingSummaries && visibleItems.length === 0 && (
+                {!loadingSummaries && feedItems.length === 0 && (
                   <div className="glass flex flex-col items-center gap-2 rounded-2xl py-16 text-center">
                     <Filter className="h-8 w-8 text-muted-foreground" />
                     <p className="max-w-sm text-sm text-muted-foreground">
