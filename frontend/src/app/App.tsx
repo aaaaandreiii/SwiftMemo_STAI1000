@@ -34,6 +34,7 @@ const ALL_ON = CATEGORIES.reduce(
   (acc, c) => ({ ...acc, [c.key]: true }),
   {} as Record<CategoryKey, boolean>,
 );
+const INGEST_CHUNK_SIZE = 20;
 
 interface HealthState {
   online: boolean;
@@ -68,6 +69,7 @@ export default function App() {
   const [audioTrack, setAudioTrack] = useState<Announcement | null>(null);
 
   const [ingesting, setIngesting] = useState(false);
+  const [ingestCount, setIngestCount] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   const [processed, setProcessed] = useState<{ processed: number; rejected: number } | null>(
     null,
@@ -201,18 +203,39 @@ export default function App() {
   const handleIngest = async () => {
     if (ingesting) return;
     setIngesting(true);
+    setIngestCount(0);
     try {
-      const response = await ingestMockData(tenant.id);
-      setLastIngest({ accepted: response.accepted_count, rejected: response.rejected_count });
+      let accepted = 0;
+      let rejected = 0;
+      let offset = 0;
+
+      while (true) {
+        const response = await ingestMockData(tenant.id, {
+          limit: INGEST_CHUNK_SIZE,
+          offset,
+        });
+        const batchCount = response.accepted_count + response.rejected_count;
+        if (batchCount === 0) break;
+
+        accepted += response.accepted_count;
+        rejected += response.rejected_count;
+        offset += batchCount;
+        setIngestCount(accepted + rejected);
+        setLastIngest({ accepted, rejected });
+
+        if (batchCount < INGEST_CHUNK_SIZE) break;
+      }
+
       setProcessed(null);
       await refreshSummaries(tenant.id);
-      toast.success(`${response.accepted_count} announcements staged`, {
-        description: `${response.rejected_count} rejected by guardrails.`,
+      toast.success(`${accepted} announcements staged`, {
+        description: `${rejected} rejected by guardrails · ingested in ${INGEST_CHUNK_SIZE}-record chunks.`,
       });
     } catch (error) {
       toast.error("Ingest failed", { description: errorMessage(error) });
     } finally {
       setIngesting(false);
+      setIngestCount(null);
     }
   };
 
@@ -298,6 +321,7 @@ export default function App() {
             onIngest={handleIngest}
             onProcess={handleProcess}
             ingesting={ingesting}
+            ingestCount={ingestCount}
             processing={processing}
             processed={processed}
             latencyMs={health.latencyMs}
@@ -331,6 +355,7 @@ export default function App() {
                   onIngest={handleIngest}
                   onProcess={handleProcess}
                   ingesting={ingesting}
+                  ingestCount={ingestCount}
                   processing={processing}
                   processed={processed}
                   latencyMs={health.latencyMs}

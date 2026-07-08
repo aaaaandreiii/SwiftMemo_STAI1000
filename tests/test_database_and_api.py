@@ -104,3 +104,31 @@ def test_feedback_endpoint_inserts_override_and_audio_stub_returns_wav(monkeypat
     assert audio.status_code == 200
     assert audio.headers["content-type"].startswith("audio/wav")
     assert audio.content.startswith(b"RIFF")
+
+
+def test_ingest_endpoint_supports_mock_limit_and_offset(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    monkeypatch.setattr(main, "DATABASE", db)
+    emails = [sample_email(f"email-{index}", subject=f"HDA: Event {index}") for index in range(3)]
+
+    def fake_load_mock_emails(limit=None, offset=0, path=None):
+        selected = emails[offset:]
+        return selected[:limit] if limit is not None else selected
+
+    monkeypatch.setattr(main, "load_mock_emails", fake_load_mock_emails)
+    monkeypatch.setattr(main, "validate_announcement", lambda email: sample_guardrail())
+
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/ingest",
+        json={"load_mock": True, "limit": 1, "offset": 1},
+        headers={"X-User-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted_count"] == 1
+    assert payload["rejected_count"] == 0
+    assert payload["accepted"][0]["email"]["id"] == "email-1"
+    assert db.get_email("tenant-a", "email-0") is None
+    assert db.get_email("tenant-a", "email-1") is not None

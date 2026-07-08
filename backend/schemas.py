@@ -45,6 +45,7 @@ class IngestRequest(BaseModel):
     email: EmailRecord | None = None
     load_mock: bool = True
     limit: int | None = Field(default=None, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
 
 
 class IngestedEmail(BaseModel):

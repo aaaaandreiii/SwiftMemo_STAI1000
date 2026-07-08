@@ -18,6 +18,7 @@ interface SidebarProps {
   onIngest: () => void;
   onProcess: () => void;
   ingesting: boolean;
+  ingestCount: number | null;
   processing: boolean;
   processed: { processed: number; rejected: number } | null;
   latencyMs: number;
@@ -51,6 +52,7 @@ export function Sidebar({
   onIngest,
   onProcess,
   ingesting,
+  ingestCount,
   processing,
   processed,
   latencyMs,
@@ -121,7 +123,9 @@ export function Sidebar({
           ) : (
             <Download className="h-4 w-4" />
           )}
-          {ingesting ? "Ingesting…" : "Ingest Mock Data"}
+          {ingesting
+            ? `Ingesting${ingestCount !== null ? ` ${ingestCount}` : ""}…`
+            : "Ingest Mock Data"}
         </button>
 
         <button

@@ -62,7 +62,11 @@ def health() -> dict[str, str]:
 @app.post("/api/ingest", response_model=IngestResponse)
 def ingest(request: IngestRequest, user_id: str = Depends(current_user)) -> IngestResponse:
     try:
-        emails = [request.email] if request.email else load_mock_emails(limit=request.limit)
+        emails = (
+            [request.email]
+            if request.email
+            else load_mock_emails(limit=request.limit, offset=request.offset)
+        )
         accepted: list[IngestedEmail] = []
         rejected: list[IngestedEmail] = []
         for email in emails:

@@ -1,3 +1,5 @@
+from email.utils import parseaddr
+
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from backend.ingestion import email_to_text
@@ -80,26 +82,49 @@ def hard_reject_non_announcement(email: EmailRecord) -> GuardrailResult | None:
 
 def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
     sender = email.sender.lower()
+    sender_address = parseaddr(email.sender)[1].lower() or sender
+    sender_domain = sender_address.rsplit("@", 1)[-1]
     subject = email.subject.lower()
     body = email.body.lower()
-    official_sender = sender.endswith("@dlsu.edu.ph") or sender.endswith(".dlsu.edu.ph")
+    official_sender = sender_domain == "dlsu.edu.ph" or sender_domain.endswith(".dlsu.edu.ph")
     hda_subject = subject.startswith("hda:") or "help desk announcement" in body
-    office_notice = "office" in body and any(
+    institutional_notice = any(
         keyword in body
         for keyword in (
             "announces",
             "reminds",
             "advises",
             "invites",
+            "cordially invites",
+            "please be advised",
             "will implement",
             "will conduct",
             "application deadline",
             "not later than",
+            "registration",
+            "deadline",
+            "schedule",
+            "advisory",
+            "office",
+            "department",
+            "college",
+            "campus",
+            "university",
         )
     )
     spam_terms = ("sale", "discount", "promo", "dinner", "eat near campus")
 
-    if (official_sender or hda_subject) and office_notice and not any(term in body for term in spam_terms):
+    if official_sender and sender_address == "announcement@dlsu.edu.ph" and not any(
+        term in body for term in spam_terms
+    ):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Official Help Desk Announcement sender.",
+            confidence=0.86,
+        )
+    if (official_sender or hda_subject) and institutional_notice and not any(
+        term in body for term in spam_terms
+    ):
         return GuardrailResult(
             is_valid=True,
             reason="Official-looking institutional announcement.",

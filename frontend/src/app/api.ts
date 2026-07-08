@@ -94,13 +94,16 @@ async function request<T>(
   });
 
   if (!response.ok) {
+    const raw = await response.text();
     let detail = response.statusText;
+
     try {
-      const payload = await response.json();
+      const payload = raw ? JSON.parse(raw) : null;
       detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
     } catch {
-      detail = await response.text();
+      detail = raw;
     }
+
     throw new Error(detail || `Request failed with status ${response.status}`);
   }
 
@@ -111,11 +114,14 @@ export function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/health");
 }
 
-export function ingestMockData(userId: string): Promise<IngestResponse> {
+export function ingestMockData(
+  userId: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<IngestResponse> {
   return request<IngestResponse>("/api/ingest", {
     method: "POST",
     userId,
-    body: JSON.stringify({ load_mock: true }),
+    body: JSON.stringify({ load_mock: true, ...options }),
   });
 }
 
