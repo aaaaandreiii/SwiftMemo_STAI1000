@@ -1,0 +1,66 @@
+[
+  {
+    "id": "hda-2026-001",
+    "sender": "helpdesk@dlsu.edu.ph",
+    "subject": "HDA: Online Enrollment Schedule for Term 1 AY 2026-2027",
+    "date": "2026-07-01T09:00:00+08:00",
+    "body": "The Office of the University Registrar announces that online enrollment for Term 1 AY 2026-2027 will run from July 10 to July 15, 2026. Undergraduate students must complete course enlistment and confirmation of enrollment through Animo.sys before 11:59 PM on July 15, 2026. Students with unpaid balances should coordinate with the Accounting Office before enrollment confirmation."
+  },
+  {
+    "id": "hda-2026-002",
+    "sender": "accounting.office@dlsu.edu.ph",
+    "subject": "HDA: Tuition Payment Deadline and Installment Reminders",
+    "date": "2026-07-03T11:30:00+08:00",
+    "body": "The Accounting Office reminds students that the first installment for Term 1 tuition must be settled on or before July 20, 2026. Payments may be made through accredited banks and online channels. Students with payment concerns should file a ticket with the Help Desk before the deadline to avoid enrollment restrictions."
+  },
+  {
+    "id": "hda-2026-003",
+    "sender": "campus.access@dlsu.edu.ph",
+    "subject": "HDA: Temporary Gate Access Procedure for External Guests",
+    "date": "2026-06-28T15:15:00+08:00",
+    "body": "The Campus Safety and Mobility Office will implement a temporary gate access procedure from July 8 to July 31, 2026. Faculty members and student organizations inviting external guests must submit the guest list, purpose of visit, and host contact details at least three working days before the scheduled visit. Guests must present a valid government-issued ID at the gate."
+  },
+  {
+    "id": "hda-2026-004",
+    "sender": "ccs.office@dlsu.edu.ph",
+    "subject": "HDA: CCS Thesis Proposal Defense Submission",
+    "date": "2026-07-04T13:00:00+08:00",
+    "body": "The College of Computer Studies announces that thesis proposal defense documents for eligible undergraduate groups must be submitted to the department secretary by July 18, 2026. Required files include the proposal manuscript, adviser endorsement, and ethics checklist. Late submissions will be scheduled for the next available defense cycle."
+  },
+  {
+    "id": "hda-2026-005",
+    "sender": "health.services@dlsu.edu.ph",
+    "subject": "HDA: Campus Health Advisory for Flu-Like Symptoms",
+    "date": "2026-07-02T08:45:00+08:00",
+    "body": "The Health Services Office advises members of the Lasallian community to stay home when experiencing fever, persistent cough, or flu-like symptoms. Students who miss graded activities due to illness should secure a medical certificate and coordinate with their instructors. Mask use is recommended in crowded indoor areas."
+  },
+  {
+    "id": "hda-2026-006",
+    "sender": "itservices@dlsu.edu.ph",
+    "subject": "HDA: Scheduled AnimoSpace Maintenance",
+    "date": "2026-07-05T18:00:00+08:00",
+    "body": "Information Technology Services will conduct scheduled AnimoSpace maintenance on July 12, 2026 from 12:00 AM to 6:00 AM. During this period, users may experience intermittent access to course pages, quizzes, and uploaded files. Faculty members are encouraged to avoid setting online deadlines during the maintenance window."
+  },
+  {
+    "id": "hda-2026-007",
+    "sender": "student.activities@dlsu.edu.ph",
+    "subject": "HDA: Student Organization Renewal Requirements",
+    "date": "2026-07-06T10:20:00+08:00",
+    "body": "The Student Activities Office reminds recognized student organizations to submit renewal documents by August 2, 2026. Requirements include the updated officer roster, adviser conforme, constitution and bylaws, and accomplishment report for the previous academic year."
+  },
+  {
+    "id": "non-hda-001",
+    "sender": "promo@example.com",
+    "subject": "Limited Time Laptop Sale",
+    "date": "2026-07-06T12:00:00+08:00",
+    "body": "Buy discounted accessories and laptops today. This is a promotional message unrelated to university announcements."
+  },
+  {
+    "id": "non-hda-002",
+    "sender": "student.friend@example.com",
+    "subject": "Dinner later?",
+    "date": "2026-07-06T19:00:00+08:00",
+    "body": "Are you free after class? Let's decide where to eat near campus."
+  }
+]
+
