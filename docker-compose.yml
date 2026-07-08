@@ -31,7 +31,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "2164:8000"
+      - "8000:8000"
     environment:
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:latest}
@@ -61,7 +61,7 @@ services:
       context: .
       dockerfile: Dockerfile.streamlit
     ports:
-      - "2144:8501"
+      - "7860:8501"
     environment:
       API_URL: http://api:8000
     depends_on:
