@@ -162,18 +162,15 @@ Together, these three subsystems form a defense-in-depth pipeline — a rule-bas
 
 ### **6.2 Deployment & Dockerization**
 
-To ensure consistent execution environments across development, testing, and production, the entire system is fully containerized using Docker and orchestrated with Docker Compose. This architecture simplifies the deployment of the multi-container application by abstracting away OS-level dependencies and configuring internal networking automatically.
+To satisfy the technical requirements of the Midterm Capstone, the entire application has been containerized. The application components are packaged into Docker images and orchestrated to build and run cleanly with a single command.
 
-* **API Backend & LLM Orchestration (`api` service):**
-  The core FastAPI application and LangGraph agent pipeline run in a dedicated container built from a lean `python:3.11-slim` base image. It manages the runtime context by installing dependencies specified in `requirements.txt`. Essential runtime data like the SQLite relational database (`swiftmemo.db`) and ChromaDB vector store are mounted as external local volumes to persist state across container restarts. Furthermore, it takes configuration via environment variables to dynamically route to different LLM providers (e.g., local Ollama endpoints or remote Gemini APIs).
-
-* **Frontend UI (`frontend` service):**
-  The web-based frontend runs in its own isolated container, building from the specific frontend Dockerfile. Docker Compose manages the networking proxy configurations (`VITE_API_PROXY_TARGET`), allowing the frontend on port `7860` to securely communicate with the internal `api` service without requiring complex cross-origin setups. It utilizes Docker's `depends_on` functionality combined with a healthcheck to guarantee that the frontend starts only when the backend API is fully healthy and ready to accept traffic.
-
-* **MLOps Tracking (`mlflow` service):**
-  To facilitate model observability, prompt experimentation, and system evaluations, an MLflow tracking server is deployed as an adjacent service using the same backend Dockerfile context. This tracking server operates locally with an SQLite backend (`mlflow.db`) and maps its tracking UI to port `5001`. The `api` service automatically logs pipeline traces to this container via the internal Docker network.
-
-This containerized approach reduces the "it works on my machine" friction during collaborative development and establishes a reliable, repeatable baseline for deploying the application to cloud infrastructure.
+* **Dockerfile Packaging:** The core application and API are packaged using a dedicated `Dockerfile` that uses a `python:3.11-slim` base image. It efficiently installs all required dependencies from `requirements.txt` and copies the necessary application code and data into the container, exposing the REST API on port `8000`. The frontend is similarly packaged in its own Dockerfile.
+* **Build and Run Instructions:** The system is orchestrated using `docker-compose.yml`, which wires together the API endpoint, the web UI, and the LLMOps monitoring service (MLflow). 
+* **Single Command Execution:** The entire end-to-end system builds and runs cleanly via a single command from the project root:
+  ```bash
+  docker-compose up --build
+  ```
+  *(Note: Detailed setup instructions, including prerequisite environment variables, are documented in the repository's `README.md` file.)*
 
 ---
 
