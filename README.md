@@ -1,6 +1,6 @@
 # SwiftMemo
 
-SwiftMemo is an agentic AI triage MVP for university Help Desk Announcements at De La Salle University. It turns raw HDA-style emails into structured summaries, rejects non-institutional messages with guardrails, answers tenant-private archive questions, and evaluates rubric metrics with MLflow.
+SwiftMemo is an agentic AI email digest MVP. It accepts readable user emails, classifies them by kind, turns them into structured summaries, discovers recurring interests, builds an in-app daily digest, answers tenant-private archive questions, and evaluates rubric metrics with MLflow.
 
 The Midterm MVP uses a required `X-User-ID` header as tenant identity. This is not production authentication; it is the isolation boundary for persisted emails, summaries, preferences, chat memory, feedback, and Chroma metadata.
 
@@ -49,14 +49,14 @@ curl http://your-ollama-server:11434/api/tags
 flowchart LR
     UI[React/Vite UI] --> API[FastAPI Backend]
     API --> SQLite[(SQLite Tenant Store)]
-    API --> Guardrails[Official Announcement Guardrails]
+    API --> Classifier[Email Classifier]
     API --> Agent[LangGraph Processing Graph]
     API --> Chat[RAG Chat and Draft Service]
     Agent --> Calendar[Asia/Manila Calendar Tool]
     Agent --> Chroma[(ChromaDB)]
     Chat --> Chroma
     Chat --> SQLite
-    Guardrails --> LLM[Ollama or Gemini]
+    Classifier --> LLM[Ollama or Gemini]
     Agent --> LLM
     Chat --> LLM
     API --> MLflow[MLflow Tracking]
@@ -75,9 +75,13 @@ X-User-ID: andrei
 Endpoints:
 
 - `GET /health` checks service status.
-- `POST /api/ingest` ingests one email or mock HDAs for the tenant.
-- `POST /api/process` runs guardrails, LangGraph extraction, preference routing, persistence, and vector indexing.
+- `POST /api/ingest` ingests one email or mock email fixtures for the tenant.
+- `POST /api/process` runs classification, LangGraph extraction, preference routing, persistence, and vector indexing.
 - `GET /api/summaries?visible_only=true` returns structured summaries scoped to the tenant.
+- `GET /api/processing-notes` lists only skipped/error records, such as unreadable emails.
+- `GET /api/profile` and `PUT /api/profile` manage tenant role, affiliation, interests, deadlines, schedule cues, and freeform context.
+- `GET /api/topics/suggestions` lists discovered recurring topics; `POST /api/topics/{topic_id}/approve` or `/dismiss` records the user's decision.
+- `GET /api/digest/daily?date=YYYY-MM-DD` returns important emails, deadlines, personal/service updates, recurring topics, and suggested interests for a selected date.
 - `POST /api/chat` answers from Chroma with `where={"user_id": ...}` and SQLite chat memory by `(user_id, session_id)`.
 - `GET /api/preferences` and `PUT /api/preferences` manage category toggles. `events` defaults off; `academic` defaults on.
 - `POST /api/draft` creates a professional contextual reply draft from tenant-filtered retrieval.
@@ -112,17 +116,17 @@ python evaluate.py
 
 It prints JSON and logs to MLflow when tracking is reachable:
 
-- guardrail precision
-- guardrail recall
+- email classifier precision
+- email classifier recall
 - Pydantic schema validation success rate
 - Asia/Manila relative-date extraction accuracy
 
 ## Development Notes
 
-- Mock announcements live in `data/mock_hdas.json`.
+- Mock email fixtures live in `data/mock_hdas.json`.
 - The React frontend lives in `frontend/` and calls FastAPI through relative `/api` and `/health` paths. In Docker, Vite proxies those paths to `http://api:8000`.
 - Real received emails should be sanitized into fixture JSON instead of connecting Gmail directly for this Midterm MVP.
-- The current fixture has 8 valid announcements and 3 rejected records. `real-hda-2026-001` is a valid OVPERI exchange announcement; `hda-2026-008` is rejected because Canvas/Instructure grade notifications are LMS activity notices, not institutional HDAs.
+- The current fixture is processed as all-email input. Canvas/Instructure notifications, personal messages, service notices, and promotions are classified and summarized instead of being blocked; only unreadable records should appear in processing notes.
 - `backend/database.py` is the SQLite source of truth for tenant-scoped records.
 - `backend/agents.py` contains the LangGraph flow: validation, structured extraction, preferences, vector indexing, and draft helper.
 - `backend/rag.py` stores mandatory vector metadata: `user_id`, `email_id`, `subject`, `date`, `sender`, `category`, and `visible_in_feed`.
@@ -162,5 +166,5 @@ docker-compose up --build
 | Team Member | Modules |
 | --- | --- |
 | Andrei | ReAct loops, tools, RAG isolation, memory |
-| Audric | Pydantic outputs, guardrails, draft engine |
+| Audric | Pydantic outputs, classifier, draft engine |
 | Sophia | FastAPI, Docker, MLflow, evaluation |

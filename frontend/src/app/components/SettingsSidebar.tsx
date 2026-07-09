@@ -1,26 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   Bell,
   BellRing,
+  CalendarDays,
+  ListChecks,
   Loader2,
   Mail,
   RefreshCw,
+  Save,
   ShieldAlert,
   Unplug,
+  UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { IngestedEmail } from "../api";
+import type { IngestedEmail, TenantProfile } from "../api";
 
 interface SettingsSidebarProps {
   open: boolean;
   tenantName: string;
-  rejectedEmails: IngestedEmail[];
-  loadingRejected: boolean;
-  rejectedError: string | null;
+  processingNotes: IngestedEmail[];
+  loadingNotes: boolean;
+  notesError: string | null;
+  profile: TenantProfile | null;
+  profileSaving: boolean;
   onClose: () => void;
-  onRefreshRejected: () => void;
+  onRefreshNotes: () => void;
+  onSaveProfile: (profile: Omit<TenantProfile, "user_id" | "updated_at">) => void;
 }
 
 const formatDate = (value: string) =>
@@ -30,18 +37,50 @@ const formatDate = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
+interface ProfileDraft {
+  role: string;
+  affiliation: string;
+  interests: string;
+  deadlines: string;
+  schedules: string;
+  freeform_context: string;
+}
+
+const profileToDraft = (profile: TenantProfile | null): ProfileDraft => ({
+  role: profile?.role ?? "",
+  affiliation: profile?.affiliation ?? "",
+  interests: (profile?.interests ?? []).join("\n"),
+  deadlines: (profile?.deadlines ?? []).join("\n"),
+  schedules: (profile?.schedules ?? []).join("\n"),
+  freeform_context: profile?.freeform_context ?? "",
+});
+
+const splitList = (value: string) =>
+  value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 export function SettingsSidebar({
   open,
   tenantName,
-  rejectedEmails,
-  loadingRejected,
-  rejectedError,
+  processingNotes,
+  loadingNotes,
+  notesError,
+  profile,
+  profileSaving,
   onClose,
-  onRefreshRejected,
+  onRefreshNotes,
+  onSaveProfile,
 }: SettingsSidebarProps) {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailSyncing, setGmailSyncing] = useState(false);
   const [notificationsOn, setNotificationsOn] = useState(false);
+  const [profileDraft, setProfileDraft] = useState(() => profileToDraft(profile));
+
+  useEffect(() => {
+    setProfileDraft(profileToDraft(profile));
+  }, [profile]);
 
   const connectGmail = () => {
     setGmailConnected(true);
@@ -75,6 +114,17 @@ export function SettingsSidebar({
         description: "No browser push subscription was created.",
       });
       return next;
+    });
+  };
+
+  const saveProfile = () => {
+    onSaveProfile({
+      role: profileDraft.role.trim(),
+      affiliation: profileDraft.affiliation.trim(),
+      interests: splitList(profileDraft.interests),
+      deadlines: splitList(profileDraft.deadlines),
+      schedules: splitList(profileDraft.schedules),
+      freeform_context: profileDraft.freeform_context.trim(),
     });
   };
 
@@ -192,23 +242,154 @@ export function SettingsSidebar({
             </div>
           </section>
 
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
+                  Profile Context
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Role, interests, deadlines, and schedule cues
+                </p>
+              </div>
+              <button
+                onClick={saveProfile}
+                disabled={profileSaving}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs text-muted-foreground transition-all hover:border-[#10b981]/50 hover:text-[#34d399] disabled:opacity-60"
+                title="Save profile context"
+              >
+                {profileSaving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                Save
+              </button>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-border bg-secondary/25 p-2">
+              <label className="block text-xs text-muted-foreground">
+                <span className="mb-1 flex items-center gap-1.5">
+                  <UserRound className="h-3.5 w-3.5" />
+                  Role
+                </span>
+                <input
+                  value={profileDraft.role}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({ ...current, role: event.target.value }))
+                  }
+                  placeholder="Student, faculty, staff"
+                  className="h-9 w-full rounded-lg border border-border bg-input/60 px-2.5 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                <span className="mb-1 flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" />
+                  Affiliation
+                </span>
+                <input
+                  value={profileDraft.affiliation}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      affiliation: event.target.value,
+                    }))
+                  }
+                  placeholder="College, team, org, or office"
+                  className="h-9 w-full rounded-lg border border-border bg-input/60 px-2.5 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                <span className="mb-1 flex items-center gap-1.5">
+                  <ListChecks className="h-3.5 w-3.5" />
+                  Interests
+                </span>
+                <textarea
+                  value={profileDraft.interests}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      interests: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Thesis, Canvas, internships"
+                  className="w-full resize-none rounded-lg border border-border bg-input/60 px-2.5 py-2 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                <span className="mb-1 flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  Deadlines
+                </span>
+                <textarea
+                  value={profileDraft.deadlines}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      deadlines: event.target.value,
+                    }))
+                  }
+                  rows={2}
+                  placeholder="Enrollment, billing, project dates"
+                  className="w-full resize-none rounded-lg border border-border bg-input/60 px-2.5 py-2 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                Schedules
+                <textarea
+                  value={profileDraft.schedules}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      schedules: event.target.value,
+                    }))
+                  }
+                  rows={2}
+                  placeholder="Class blocks, office hours, recurring meetings"
+                  className="mt-1 w-full resize-none rounded-lg border border-border bg-input/60 px-2.5 py-2 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                Freeform Context
+                <textarea
+                  value={profileDraft.freeform_context}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      freeform_context: event.target.value,
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Any extra context SwiftMemo should keep in mind"
+                  className="mt-1 w-full resize-none rounded-lg border border-border bg-input/60 px-2.5 py-2 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+            </div>
+          </section>
+
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-                  Rejected Emails
+                  Processing Notes
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {rejectedEmails.length} filtered by guardrails
+                  {processingNotes.length} skipped or errored records
                 </p>
               </div>
               <button
-                onClick={onRefreshRejected}
-                disabled={loadingRejected}
+                onClick={onRefreshNotes}
+                disabled={loadingNotes}
                 className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-all hover:border-[#10b981]/50 hover:text-[#34d399] disabled:opacity-60"
-                title="Refresh rejected emails"
+                title="Refresh processing notes"
               >
-                {loadingRejected ? (
+                {loadingNotes ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" />
@@ -216,20 +397,20 @@ export function SettingsSidebar({
               </button>
             </div>
 
-            {rejectedError && (
+            {notesError && (
               <div className="rounded-lg border border-[#f43f5e]/30 bg-[#f43f5e]/10 px-3 py-2 text-xs text-[#fda4af]">
-                {rejectedError}
+                {notesError}
               </div>
             )}
 
-            {!loadingRejected && !rejectedError && rejectedEmails.length === 0 && (
+            {!loadingNotes && !notesError && processingNotes.length === 0 && (
               <div className="rounded-lg border border-border bg-secondary/20 px-3 py-4 text-sm text-muted-foreground">
-                No rejected emails for this tenant.
+                No skipped or error emails for this tenant.
               </div>
             )}
 
             <div className="space-y-2">
-              {rejectedEmails.map((item) => (
+              {processingNotes.map((item) => (
                 <article
                   key={item.email.id}
                   className="rounded-lg border border-border bg-secondary/20 p-3"
@@ -252,7 +433,8 @@ export function SettingsSidebar({
                     {item.email.body}
                   </p>
                   <p className="mt-2 font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground">
-                    Confidence {Math.round(item.guardrail.confidence * 100)}%
+                    {item.guardrail.email_kind.replace(/_/g, " ")} · Confidence{" "}
+                    {Math.round(item.guardrail.confidence * 100)}%
                   </p>
                 </article>
               ))}

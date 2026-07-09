@@ -78,9 +78,9 @@ export interface Tenant {
 }
 
 export const TENANTS: Tenant[] = [
-  { id: "andrei", name: "Andrei Cruz", role: "BS Computer Science · III", initials: "AC" },
-  { id: "audric", name: "Audric Reyes", role: "BS Accountancy · II", initials: "AR" },
-  { id: "sophia", name: "Sophia Lim", role: "Faculty · CCS", initials: "SL" },
+  { id: "andrei", name: "Andrei Balingit", role: "BS Computer Science · III", initials: "ALB" },
+  { id: "audric", name: "Audric Filipino", role: "BS Computer Science · III", initials: "AJF" },
+  { id: "sophia", name: "Sophia Avelino", role: "BS Computer Science · III", initials: "SKA" },
 ];
 
 export interface Announcement {

@@ -1,6 +1,9 @@
+import json
+import re
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from collections import Counter, defaultdict
+from datetime import date, datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -40,6 +43,8 @@ class SwiftMemoDB:
                     guardrail_valid INTEGER NOT NULL,
                     guardrail_reason TEXT NOT NULL,
                     guardrail_confidence REAL NOT NULL,
+                    is_institutional INTEGER NOT NULL DEFAULT 0,
+                    email_kind TEXT NOT NULL DEFAULT 'other',
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (user_id, email_id)
                 );
@@ -98,9 +103,47 @@ class SwiftMemoDB:
                     status TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    role TEXT NOT NULL,
+                    affiliation TEXT NOT NULL,
+                    interests_json TEXT NOT NULL,
+                    deadlines_json TEXT NOT NULL,
+                    schedules_json TEXT NOT NULL,
+                    freeform_context TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS topic_suggestions (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    source_count INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    sample_subjects_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE (user_id, label)
+                );
                 """
             )
+            self._migrate_schema_locked()
             self._conn.commit()
+
+    def _migrate_schema_locked(self) -> None:
+        email_columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(emails)").fetchall()
+        }
+        if "is_institutional" not in email_columns:
+            self._conn.execute(
+                "ALTER TABLE emails ADD COLUMN is_institutional INTEGER NOT NULL DEFAULT 0"
+            )
+        if "email_kind" not in email_columns:
+            self._conn.execute(
+                "ALTER TABLE emails ADD COLUMN email_kind TEXT NOT NULL DEFAULT 'other'"
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -114,9 +157,10 @@ class SwiftMemoDB:
                 """
                 INSERT INTO emails (
                     user_id, email_id, sender, subject, email_date, body,
-                    guardrail_valid, guardrail_reason, guardrail_confidence, created_at
+                    guardrail_valid, guardrail_reason, guardrail_confidence,
+                    is_institutional, email_kind, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id, email_id) DO UPDATE SET
                     sender = excluded.sender,
                     subject = excluded.subject,
@@ -124,7 +168,9 @@ class SwiftMemoDB:
                     body = excluded.body,
                     guardrail_valid = excluded.guardrail_valid,
                     guardrail_reason = excluded.guardrail_reason,
-                    guardrail_confidence = excluded.guardrail_confidence
+                    guardrail_confidence = excluded.guardrail_confidence,
+                    is_institutional = excluded.is_institutional,
+                    email_kind = excluded.email_kind
                 """,
                 (
                     user_id,
@@ -136,6 +182,8 @@ class SwiftMemoDB:
                     int(guardrail.is_valid),
                     guardrail.reason,
                     guardrail.confidence,
+                    int(guardrail.is_institutional),
+                    guardrail.email_kind,
                     _now(),
                 ),
             )
@@ -170,6 +218,9 @@ class SwiftMemoDB:
         return [_row_to_email(row) for row in rows]
 
     def unprocessed_valid_emails(self, user_id: str, limit: int) -> list[EmailRecord]:
+        return self.unprocessed_emails(user_id, limit=limit)
+
+    def unprocessed_emails(self, user_id: str, limit: int) -> list[EmailRecord]:
         rows = self._fetchall(
             """
             SELECT e.*
@@ -177,7 +228,6 @@ class SwiftMemoDB:
             LEFT JOIN triage_summaries ts
                 ON ts.user_id = e.user_id AND ts.email_id = e.email_id
             WHERE e.user_id = ?
-                AND e.guardrail_valid = 1
                 AND ts.summary_id IS NULL
             ORDER BY e.email_date ASC, e.email_id ASC
             LIMIT ?
@@ -186,7 +236,7 @@ class SwiftMemoDB:
         )
         return [_row_to_email(row) for row in rows]
 
-    def rejected_emails(
+    def processing_notes(
         self,
         user_id: str,
         limit: int | None = None,
@@ -202,6 +252,13 @@ class SwiftMemoDB:
             params = (user_id, limit)
         rows = self._fetchall(sql, params)
         return [_row_to_ingested(row) for row in rows]
+
+    def rejected_emails(
+        self,
+        user_id: str,
+        limit: int | None = None,
+    ) -> list[IngestedEmail]:
+        return self.processing_notes(user_id, limit=limit)
 
     def save_triage(
         self,
@@ -277,6 +334,236 @@ class SwiftMemoDB:
             sql += " LIMIT ?"
             params.append(limit)
         return [_row_to_summary_item(row) for row in self._fetchall(sql, tuple(params))]
+
+    def get_profile(self, user_id: str) -> dict[str, Any]:
+        row = self._fetchone(
+            "SELECT * FROM user_profiles WHERE user_id = ?",
+            (user_id,),
+        )
+        if not row:
+            return {
+                "user_id": user_id,
+                "role": "",
+                "affiliation": "",
+                "interests": [],
+                "deadlines": [],
+                "schedules": [],
+                "freeform_context": "",
+                "updated_at": None,
+            }
+        return _row_to_profile(row)
+
+    def set_profile(
+        self,
+        user_id: str,
+        *,
+        role: str,
+        affiliation: str,
+        interests: list[str],
+        deadlines: list[str],
+        schedules: list[str],
+        freeform_context: str,
+    ) -> dict[str, Any]:
+        updated_at = _now()
+        cleaned_interests = _clean_string_list(interests)
+        cleaned_deadlines = _clean_string_list(deadlines)
+        cleaned_schedules = _clean_string_list(schedules)
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO user_profiles (
+                    user_id, role, affiliation, interests_json, deadlines_json,
+                    schedules_json, freeform_context, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    role = excluded.role,
+                    affiliation = excluded.affiliation,
+                    interests_json = excluded.interests_json,
+                    deadlines_json = excluded.deadlines_json,
+                    schedules_json = excluded.schedules_json,
+                    freeform_context = excluded.freeform_context,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    user_id,
+                    role.strip(),
+                    affiliation.strip(),
+                    json.dumps(cleaned_interests),
+                    json.dumps(cleaned_deadlines),
+                    json.dumps(cleaned_schedules),
+                    freeform_context.strip(),
+                    updated_at,
+                ),
+            )
+            self._conn.commit()
+        return self.get_profile(user_id)
+
+    def add_profile_interest(self, user_id: str, label: str) -> dict[str, Any]:
+        profile = self.get_profile(user_id)
+        interests = list(profile["interests"])
+        if label and not any(item.lower() == label.lower() for item in interests):
+            interests.append(label)
+        return self.set_profile(
+            user_id,
+            role=profile["role"],
+            affiliation=profile["affiliation"],
+            interests=interests,
+            deadlines=profile["deadlines"],
+            schedules=profile["schedules"],
+            freeform_context=profile["freeform_context"],
+        )
+
+    def discover_topic_suggestions(self, user_id: str) -> None:
+        summaries = self.list_summaries(user_id, visible_only=False)
+        counts: Counter[str] = Counter()
+        subjects: dict[str, list[str]] = defaultdict(list)
+        for item in summaries:
+            text = " ".join(
+                [
+                    str(item["source_subject"]),
+                    str(item["title"]),
+                    str(item["summary"]),
+                    str(item["sender"]),
+                ]
+            )
+            for label in _topic_candidates(text):
+                counts[label] += 1
+                if len(subjects[label]) < 3 and item["source_subject"] not in subjects[label]:
+                    subjects[label].append(str(item["source_subject"]))
+
+        now = _now()
+        with self._lock:
+            for label, source_count in counts.items():
+                if source_count < 2:
+                    continue
+                topic_id = _topic_id(user_id, label)
+                self._conn.execute(
+                    """
+                    INSERT INTO topic_suggestions (
+                        id, user_id, label, source_count, status,
+                        sample_subjects_json, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+                    ON CONFLICT(user_id, label) DO UPDATE SET
+                        source_count = excluded.source_count,
+                        sample_subjects_json = excluded.sample_subjects_json,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        topic_id,
+                        user_id,
+                        label,
+                        source_count,
+                        json.dumps(subjects[label]),
+                        now,
+                        now,
+                    ),
+                )
+            self._conn.commit()
+
+    def list_topic_suggestions(
+        self,
+        user_id: str,
+        statuses: tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        self.discover_topic_suggestions(user_id)
+        sql = "SELECT * FROM topic_suggestions WHERE user_id = ?"
+        params: list[Any] = [user_id]
+        if statuses:
+            placeholders = ", ".join("?" for _ in statuses)
+            sql += f" AND status IN ({placeholders})"
+            params.extend(statuses)
+        sql += " ORDER BY status ASC, source_count DESC, label ASC"
+        return [_row_to_topic(row) for row in self._fetchall(sql, tuple(params))]
+
+    def set_topic_status(
+        self,
+        user_id: str,
+        topic_id: str,
+        status: str,
+    ) -> dict[str, Any]:
+        if status not in {"active", "dismissed", "pending"}:
+            raise ValueError(f"Unsupported topic status: {status}")
+        self.discover_topic_suggestions(user_id)
+        existing = self._fetchone(
+            "SELECT * FROM topic_suggestions WHERE user_id = ? AND id = ?",
+            (user_id, topic_id),
+        )
+        if not existing:
+            raise KeyError(topic_id)
+        with self._lock:
+            self._conn.execute(
+                """
+                UPDATE topic_suggestions
+                SET status = ?, updated_at = ?
+                WHERE user_id = ? AND id = ?
+                """,
+                (status, _now(), user_id, topic_id),
+            )
+            self._conn.commit()
+        topic = _row_to_topic(
+            self._fetchone(
+                "SELECT * FROM topic_suggestions WHERE user_id = ? AND id = ?",
+                (user_id, topic_id),
+            )
+        )
+        profile = (
+            self.add_profile_interest(user_id, topic["label"])
+            if status == "active"
+            else self.get_profile(user_id)
+        )
+        return {"topic": topic, "profile": profile}
+
+    def daily_digest(self, user_id: str, digest_date: date) -> dict[str, Any]:
+        target = digest_date.isoformat()
+        items = self._digest_items(user_id)
+        today_items = [item for item in items if str(item["email_date"])[:10] == target]
+        deadlines = [item for item in items if item["deadline_date"] == target]
+        important = _unique_digest_items(
+            [
+                item
+                for item in today_items + deadlines
+                if item["urgency_score"] >= 4 or item["deadline_date"] == target
+            ]
+        )
+        personal_service_updates = [
+            item
+            for item in today_items
+            if item["email_kind"]
+            in {"personal", "lms_notification", "service_notification", "promotional"}
+        ]
+        topics = self.list_topic_suggestions(user_id, statuses=("active", "pending"))
+        suggested = [topic for topic in topics if topic["status"] == "pending"]
+        return {
+            "user_id": user_id,
+            "digest_date": digest_date,
+            "important_emails": important,
+            "deadlines": deadlines,
+            "personal_service_updates": personal_service_updates,
+            "recurring_topics": topics,
+            "suggested_interests": suggested,
+        }
+
+    def _digest_items(self, user_id: str) -> list[dict[str, Any]]:
+        rows = self._fetchall(
+            """
+            SELECT
+                ts.*,
+                e.subject AS source_subject,
+                e.sender,
+                e.email_date,
+                e.is_institutional,
+                e.email_kind
+            FROM triage_summaries ts
+            JOIN emails e
+                ON e.user_id = ts.user_id AND e.email_id = ts.email_id
+            WHERE ts.user_id = ?
+            ORDER BY COALESCE(ts.deadline_date, e.email_date) ASC, ts.created_at ASC
+            """,
+            (user_id,),
+        )
+        return [_row_to_digest_item(row) for row in rows]
 
     def get_preferences(self, user_id: str) -> dict[str, bool]:
         preferences = {category: True for category in CATEGORIES}
@@ -461,6 +748,8 @@ def _row_to_ingested(row: sqlite3.Row) -> IngestedEmail:
             is_valid=bool(row["guardrail_valid"]),
             reason=row["guardrail_reason"],
             confidence=row["guardrail_confidence"],
+            is_institutional=bool(row["is_institutional"]),
+            email_kind=row["email_kind"],
         ),
     )
 
@@ -480,6 +769,141 @@ def _row_to_summary_item(row: sqlite3.Row) -> dict[str, Any]:
         "visible_in_feed": bool(row["visible_in_feed"]),
         "created_at": row["created_at"],
     }
+
+
+def _row_to_digest_item(row: sqlite3.Row) -> dict[str, Any]:
+    item = _row_to_summary_item(row)
+    item["email_kind"] = row["email_kind"]
+    item["is_institutional"] = bool(row["is_institutional"])
+    return item
+
+
+def _row_to_profile(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "user_id": row["user_id"],
+        "role": row["role"],
+        "affiliation": row["affiliation"],
+        "interests": _json_list(row["interests_json"]),
+        "deadlines": _json_list(row["deadlines_json"]),
+        "schedules": _json_list(row["schedules_json"]),
+        "freeform_context": row["freeform_context"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _row_to_topic(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        raise KeyError("Unknown topic suggestion")
+    return {
+        "id": row["id"],
+        "label": row["label"],
+        "source_count": row["source_count"],
+        "status": row["status"],
+        "sample_subjects": _json_list(row["sample_subjects_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _json_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def _clean_string_list(values: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        label = str(value).strip()
+        key = label.lower()
+        if not label or key in seen:
+            continue
+        cleaned.append(label)
+        seen.add(key)
+    return cleaned
+
+
+def _topic_id(user_id: str, label: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"swiftmemo-topic:{user_id}:{label.lower()}"))
+
+
+def _topic_candidates(text: str) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    words = [word for word in normalized.split() if word not in _TOPIC_STOP_WORDS]
+    candidates: set[str] = set()
+    known_phrases = {
+        "canvas": ("canvas", "instructure", "assignment graded", "graded"),
+        "service receipts": ("receipt", "invoice", "subscription", "billing"),
+        "security alerts": ("security alert", "password", "login", "account update"),
+        "meetings": ("meeting", "meet", "appointment", "schedule"),
+        "promotions": ("discount", "promo", "sale", "voucher", "limited time"),
+        "events": ("webinar", "workshop", "event", "general assembly"),
+        "deadlines": ("deadline", "due", "not later than", "by july", "by august"),
+    }
+    for label, phrases in known_phrases.items():
+        if any(phrase in normalized for phrase in phrases):
+            candidates.add(label)
+    for word in words:
+        if len(word) >= 5 and not word.isdigit():
+            candidates.add(word)
+    for first, second in zip(words, words[1:]):
+        if len(first) >= 4 and len(second) >= 4:
+            candidates.add(f"{first} {second}")
+    return candidates
+
+
+def _unique_digest_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        key = str(item["summary_id"])
+        if key in seen:
+            continue
+        unique.append(item)
+        seen.add(key)
+    return unique
+
+
+_TOPIC_STOP_WORDS = {
+    "about",
+    "after",
+    "again",
+    "all",
+    "and",
+    "announcement",
+    "are",
+    "before",
+    "been",
+    "body",
+    "class",
+    "dlsu",
+    "email",
+    "from",
+    "has",
+    "have",
+    "help",
+    "into",
+    "later",
+    "message",
+    "not",
+    "office",
+    "please",
+    "posted",
+    "subject",
+    "that",
+    "the",
+    "this",
+    "will",
+    "with",
+    "your",
+}
 
 
 DATABASE = SwiftMemoDB()

@@ -58,7 +58,7 @@ export function Header({
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder="Search all announcements…"
+          placeholder="Search all email summaries..."
           className="h-10 w-full rounded-xl border border-border bg-input/60 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-all focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
         />
       </div>

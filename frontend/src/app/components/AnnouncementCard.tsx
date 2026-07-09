@@ -75,6 +75,7 @@ export function AnnouncementCard({
   const [showOriginal, setShowOriginal] = useState(false);
   const [schoolworkAdded, setSchoolworkAdded] = useState(false);
   const meta = categoryMeta(a.category);
+  const MetaIcon = meta.icon;
   const cd = countdownLabel(a.dueDate);
   const high = a.urgency >= 4;
   const showSchoolworkAutomation = a.category === "Academic" && Boolean(a.dueDate);
@@ -111,7 +112,7 @@ export function AnnouncementCard({
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
             style={{ background: meta.color + "1f", color: meta.color }}
           >
-            <meta.icon className="h-3.5 w-3.5" />
+            <MetaIcon className="h-3.5 w-3.5" />
             {a.category}
           </span>
           {/* urgency dots */}

@@ -39,11 +39,11 @@ def calendar_check(relative_date: str = "") -> str:
     return f"Current date in {settings.default_timezone}: {today.isoformat()}"
 
 
-AGENT_PROMPT = """You are SwiftMemo, a ReAct triage agent for DLSU Help Desk Announcements.
+AGENT_PROMPT = """You are SwiftMemo, a ReAct triage agent for email updates.
 
 You must call the calendar_check tool before producing the final answer. If the email uses relative dates, pass the relative phrase to calendar_check.
 
-Extract the announcement into this exact JSON schema:
+Extract the email update into this exact JSON schema:
 {
   "title": "short title",
   "summary": "1-2 sentence action-focused summary",
@@ -57,6 +57,9 @@ Rules:
 - Do not invent a deadline. Use null if there is no explicit deadline.
 - urgency_score must be an integer from 1 to 5, where 5 is most urgent.
 - Keep summaries factual and based only on the email content.
+- Support school announcements, personal emails, LMS/service notifications,
+  promotions, student organization emails, administrative updates, deadlines,
+  and schedule-related messages.
 """
 
 
@@ -147,7 +150,7 @@ def _rejected_node(state: ProcessState) -> ProcessState:
 def extract_structured_summary(email: EmailRecord) -> tuple[TriageSummary, str | None]:
     try:
         graph = _build_react_agent()
-        prompt = f"Process this validated institutional announcement:\n\n{email_to_text(email)}"
+        prompt = f"Process this classified email update:\n\n{email_to_text(email)}"
         with telemetry_run(
             operation="react_agent_process",
             params={"email_id": email.id, "subject": email.subject},
@@ -174,7 +177,7 @@ def process_email(
     state = graph.invoke({"user_id": user_id, "email": email, "guardrail": guardrail})
     final_guardrail = state["guardrail"]
     if not final_guardrail.is_valid:
-        raise ValueError(f"Email rejected by guardrails: {final_guardrail.reason}")
+        raise ValueError(f"Email skipped before processing: {final_guardrail.reason}")
 
     summary = state["summary"]
     return ProcessedEmail(
@@ -198,7 +201,7 @@ def process_email_fast(
     final_guardrail = guardrail or heuristic_validate_announcement(email)
     DATABASE.save_ingested(user_id, IngestedEmail(email=email, guardrail=final_guardrail))
     if not final_guardrail.is_valid:
-        raise ValueError(f"Email rejected by guardrails: {final_guardrail.reason}")
+        raise ValueError(f"Email skipped before processing: {final_guardrail.reason}")
 
     summary = heuristic_extract_summary(email)
     visible = DATABASE.category_enabled(user_id, summary.category)
@@ -222,7 +225,7 @@ def process_email_fast(
 
 
 def process_batch(user_id: str, limit: int, offset: int = 0) -> list[ProcessedEmail]:
-    emails = DATABASE.unprocessed_valid_emails(user_id, limit=limit)
+    emails = DATABASE.unprocessed_emails(user_id, limit=limit)
     if not emails and not DATABASE.valid_emails(user_id, limit=1):
         emails = load_mock_emails(limit=limit, offset=offset)
 
@@ -348,13 +351,13 @@ def _extract_deadline(email: EmailRecord) -> date | None:
 def _classify_category(email: EmailRecord):
     text = f"{email.subject} {email.body}".lower()
     keyword_map = {
-        "academic": ("enrollment", "thesis", "course", "graded", "classes", "defense"),
-        "finance": ("tuition", "payment", "accounting", "installment", "balance"),
+        "academic": ("enrollment", "thesis", "course", "graded", "classes", "defense", "canvas"),
+        "finance": ("tuition", "payment", "accounting", "installment", "balance", "invoice", "receipt"),
         "campus_access": ("gate", "access", "guest", "campus safety"),
         "health_safety": ("health", "flu", "symptoms", "mask", "illness"),
-        "events": ("student organization", "activities", "event", "renewal"),
-        "it_services": ("animospace", "maintenance", "it services", "online"),
-        "administrative": ("registrar", "office", "procedure", "requirements"),
+        "events": ("student organization", "activities", "event", "renewal", "webinar", "workshop"),
+        "it_services": ("animospace", "maintenance", "it services", "online", "password", "security alert"),
+        "administrative": ("registrar", "office", "procedure", "requirements", "confirmation"),
     }
     for category, keywords in keyword_map.items():
         if any(keyword in text for keyword in keywords):

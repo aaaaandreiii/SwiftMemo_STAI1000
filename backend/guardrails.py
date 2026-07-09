@@ -8,25 +8,30 @@ from backend.llm import invoke_llm
 from backend.schemas import EmailRecord, GuardrailResult
 
 
-GUARDRAIL_SYSTEM_PROMPT = """You validate whether a message is a university institutional announcement.
+GUARDRAIL_SYSTEM_PROMPT = """You classify email updates for SwiftMemo.
 
-Accept only announcements that are plausibly official De La Salle University notices, Help Desk Announcements, or office-issued student/faculty policy updates. Reject personal messages, ads, spam, casual chats, and content unrelated to institutional operations.
+Classify every readable normal email as processable. Do not reject personal emails,
+Canvas/LMS notifications, service notifications, promotions, student organization
+emails, or casual messages. Use is_valid=false only for technically unusable records,
+such as empty or unreadable content.
 
 Return only strict JSON:
 {
   "is_valid": true or false,
   "reason": "short reason",
-  "confidence": number between 0 and 1
+  "confidence": number between 0 and 1,
+  "is_institutional": true or false,
+  "email_kind": "institutional | academic | administrative | student_org_event | lms_notification | service_notification | personal | promotional | other"
 }
 """
 
 
 def validate_announcement(email: EmailRecord) -> GuardrailResult:
-    hard_reject = hard_reject_non_announcement(email)
+    hard_reject = hard_reject_unprocessable_email(email)
     if hard_reject:
         return hard_reject
 
-    prompt = f"Validate this candidate announcement:\n\n{email_to_text(email)}"
+    prompt = f"Classify this email update:\n\n{email_to_text(email)}"
     try:
         response_text = invoke_llm(
             [
@@ -37,59 +42,47 @@ def validate_announcement(email: EmailRecord) -> GuardrailResult:
             params={"email_id": email.id, "subject": email.subject},
         )
         parsed = extract_json_object(response_text)
-        return GuardrailResult.model_validate(parsed)
+        result = GuardrailResult.model_validate(parsed)
+        return _coerce_processable_classification(email, result)
     except Exception:
         return heuristic_validate_announcement(email)
 
 
-def hard_reject_non_announcement(email: EmailRecord) -> GuardrailResult | None:
-    sender = email.sender.lower()
+def hard_reject_unprocessable_email(email: EmailRecord) -> GuardrailResult | None:
     subject = email.subject.lower()
     body = email.body.lower()
-    text = f"{subject}\n{body}"
+    text = f"{subject}\n{body}".strip()
 
-    if "instructure.com" in sender and any(
-        phrase in text
-        for phrase in (
-            "assignment graded",
-            "has been graded",
-            "graded:",
-            "submission comment",
-        )
-    ):
+    if len(text) < 3 or not (email.subject.strip() or email.body.strip()):
         return GuardrailResult(
             is_valid=False,
-            reason="LMS activity notification, not an institutional announcement.",
-            confidence=0.96,
-        )
-
-    if any(term in text for term in ("limited time", "laptop sale", "discounted accessories")):
-        return GuardrailResult(
-            is_valid=False,
-            reason="Promotional message unrelated to institutional operations.",
-            confidence=0.97,
-        )
-
-    if any(term in text for term in ("dinner later", "where to eat", "are you free after class")):
-        return GuardrailResult(
-            is_valid=False,
-            reason="Personal message, not an institutional announcement.",
-            confidence=0.96,
+            reason="Email record has no readable subject or body.",
+            confidence=0.98,
+            email_kind="unreadable",
         )
 
     return None
 
 
+def hard_reject_non_announcement(email: EmailRecord) -> GuardrailResult | None:
+    return hard_reject_unprocessable_email(email)
+
+
 def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
+    hard_reject = hard_reject_unprocessable_email(email)
+    if hard_reject:
+        return hard_reject
+
     sender = email.sender.lower()
     sender_address = parseaddr(email.sender)[1].lower() or sender
     sender_domain = sender_address.rsplit("@", 1)[-1]
     subject = email.subject.lower()
     body = email.body.lower()
+    text = f"{subject}\n{body}"
     official_sender = sender_domain == "dlsu.edu.ph" or sender_domain.endswith(".dlsu.edu.ph")
     hda_subject = subject.startswith("hda:") or "help desk announcement" in body
     institutional_notice = any(
-        keyword in body
+        keyword in text
         for keyword in (
             "announces",
             "reminds",
@@ -112,32 +105,152 @@ def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
             "university",
         )
     )
-    spam_terms = ("sale", "discount", "promo", "dinner", "eat near campus")
 
-    if official_sender and sender_address == "announcement@dlsu.edu.ph" and not any(
-        term in body for term in spam_terms
-    ):
-        return GuardrailResult(
-            is_valid=True,
-            reason="Official Help Desk Announcement sender.",
-            confidence=0.86,
+    if "instructure.com" in sender_domain or "canvas" in text or any(
+        phrase in text
+        for phrase in (
+            "assignment graded",
+            "has been graded",
+            "graded:",
+            "submission comment",
+            "course notification",
         )
-    if (official_sender or hda_subject) and institutional_notice and not any(
-        term in body for term in spam_terms
     ):
         return GuardrailResult(
             is_valid=True,
-            reason="Official-looking institutional announcement.",
+            reason="LMS notification classified for summarization.",
+            confidence=0.94,
+            is_institutional=False,
+            email_kind="lms_notification",
+        )
+
+    if any(
+        term in text
+        for term in (
+            "limited time",
+            "laptop sale",
+            "discounted accessories",
+            "promo",
+            "promotion",
+            "unsubscribe",
+            "voucher",
+        )
+    ):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Promotional email classified for summarization.",
+            confidence=0.93,
+            is_institutional=False,
+            email_kind="promotional",
+        )
+
+    if any(
+        term in text
+        for term in (
+            "dinner later",
+            "where to eat",
+            "are you free after class",
+            "see you later",
+            "can we meet",
+        )
+    ):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Personal email classified for summarization.",
+            confidence=0.9,
+            is_institutional=False,
+            email_kind="personal",
+        )
+
+    if any(
+        term in text
+        for term in (
+            "student organization",
+            "student org",
+            "webinar",
+            "workshop",
+            "general assembly",
+            "call for volunteers",
+        )
+    ):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Student organization or event email classified for summarization.",
+            confidence=0.88,
+            is_institutional=official_sender,
+            email_kind="student_org_event",
+        )
+
+    if any(
+        token in sender_address
+        for token in ("no-reply", "noreply", "notification", "alerts", "support")
+    ) or any(
+        term in text
+        for term in (
+            "receipt",
+            "invoice",
+            "password",
+            "security alert",
+            "confirmation",
+            "delivery",
+            "subscription",
+            "account update",
+        )
+    ):
+        return GuardrailResult(
+            is_valid=True,
+            reason="Service notification classified for summarization.",
+            confidence=0.86,
+            is_institutional=False,
+            email_kind="service_notification",
+        )
+
+    if official_sender and sender_address == "announcement@dlsu.edu.ph":
+        return GuardrailResult(
+            is_valid=True,
+            reason="Official Help Desk Announcement classified for summarization.",
+            confidence=0.86,
+            is_institutional=True,
+            email_kind="institutional",
+        )
+    if (official_sender or hda_subject) and institutional_notice:
+        return GuardrailResult(
+            is_valid=True,
+            reason="Institutional email update classified for summarization.",
             confidence=0.82,
+            is_institutional=True,
+            email_kind="institutional",
         )
     if official_sender and hda_subject:
         return GuardrailResult(
             is_valid=True,
-            reason="Official sender and HDA subject.",
+            reason="Official sender and HDA subject classified for summarization.",
             confidence=0.74,
+            is_institutional=True,
+            email_kind="institutional",
         )
     return GuardrailResult(
-        is_valid=False,
-        reason="Not an official institutional announcement.",
-        confidence=0.78,
+        is_valid=True,
+        reason="General email classified for summarization.",
+        confidence=0.72,
+        is_institutional=official_sender and institutional_notice,
+        email_kind="other",
+    )
+
+
+def _coerce_processable_classification(
+    email: EmailRecord,
+    result: GuardrailResult,
+) -> GuardrailResult:
+    if result.is_valid:
+        return result
+    hard_reject = hard_reject_unprocessable_email(email)
+    if hard_reject:
+        return hard_reject
+    return GuardrailResult(
+        is_valid=True,
+        reason=result.reason or "Readable email classified for summarization.",
+        confidence=result.confidence,
+        is_institutional=result.is_institutional,
+        email_kind=result.email_kind or "other",
     )

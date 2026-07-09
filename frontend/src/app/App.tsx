@@ -9,19 +9,28 @@ import type { FeedWorkflowState } from "./components/Sidebar";
 import { SettingsSidebar } from "./components/SettingsSidebar";
 import { Timeline, type TimelineDay } from "./components/Timeline";
 import { Metrics, type MetricFilter } from "./components/Metrics";
+import { DailyDigest } from "./components/DailyDigest";
 import { AnnouncementCard } from "./components/AnnouncementCard";
 import { CopilotDrawer } from "./components/CopilotDrawer";
 import { AudioPlayer } from "./components/AudioPlayer";
 import {
+  approveTopic,
+  dismissTopic,
+  getDailyDigest,
   getHealth,
   getPreferences,
-  getRejectedEmails,
+  getProcessingNotes,
+  getProfile,
   getSummaries,
   ingestMockData,
   processFeed,
   sendFeedback,
+  updateProfile,
   updatePreferences,
+  type DailyDigestResponse,
   type IngestedEmail,
+  type TenantProfile,
+  type TopicSuggestion,
 } from "./api";
 import {
   CATEGORIES,
@@ -57,6 +66,8 @@ const today = () => {
   return d;
 };
 
+const todayIso = () => today().toISOString().slice(0, 10);
+
 const sortDate = (value: string | null) =>
   value ? new Date(value + "T00:00:00").getTime() : Number.MAX_SAFE_INTEGER;
 
@@ -87,8 +98,8 @@ export default function App() {
   const [feedWorkflow, setFeedWorkflow] = useState<FeedWorkflowState>({
     stage: "idle",
     fetched: 0,
-    accepted: 0,
-    rejected: 0,
+    classified: 0,
+    skipped: 0,
     processed: 0,
     batch: 0,
   });
@@ -99,9 +110,13 @@ export default function App() {
   });
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rejectedEmails, setRejectedEmails] = useState<IngestedEmail[]>([]);
-  const [loadingRejected, setLoadingRejected] = useState(false);
-  const [rejectedError, setRejectedError] = useState<string | null>(null);
+  const [processingNotes, setProcessingNotes] = useState<IngestedEmail[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [profile, setProfile] = useState<TenantProfile | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [dailyDigest, setDailyDigest] = useState<DailyDigestResponse | null>(null);
+  const [loadingDigest, setLoadingDigest] = useState(false);
 
   const refreshHealth = useCallback(async () => {
     const started = performance.now();
@@ -122,16 +137,31 @@ export default function App() {
     setItems(response.items.map(summaryToAnnouncement));
   }, []);
 
-  const refreshRejected = useCallback(async (tenantId: string) => {
-    setLoadingRejected(true);
-    setRejectedError(null);
+  const refreshProcessingNotes = useCallback(async (tenantId: string) => {
+    setLoadingNotes(true);
+    setNotesError(null);
     try {
-      const response = await getRejectedEmails(tenantId);
-      setRejectedEmails(response.items);
+      const response = await getProcessingNotes(tenantId);
+      setProcessingNotes(response.items);
     } catch (error) {
-      setRejectedError(errorMessage(error));
+      setNotesError(errorMessage(error));
     } finally {
-      setLoadingRejected(false);
+      setLoadingNotes(false);
+    }
+  }, []);
+
+  const refreshDailyDigest = useCallback(async (tenantId: string, digestDate: string) => {
+    setLoadingDigest(true);
+    try {
+      const response = await getDailyDigest(tenantId, digestDate);
+      setDailyDigest(response);
+    } catch (error) {
+      setDailyDigest(null);
+      toast.error("Unable to load daily digest", {
+        description: errorMessage(error),
+      });
+    } finally {
+      setLoadingDigest(false);
     }
   }, []);
 
@@ -142,17 +172,23 @@ export default function App() {
     setMetricFilter("visible");
     setContext(null);
     setAudioTrack(null);
-    setRejectedEmails([]);
-    setRejectedError(null);
+    setProcessingNotes([]);
+    setNotesError(null);
+    setDailyDigest(null);
     try {
-      const [preferences, summaries] = await Promise.all([
+      const [preferences, summaries, tenantProfile, digest] = await Promise.all([
         getPreferences(tenant.id),
         getSummaries(tenant.id, false),
+        getProfile(tenant.id),
+        getDailyDigest(tenant.id, todayIso()),
       ]);
       setPrefs(preferencesFromBackend(preferences.preferences));
       setItems(summaries.items.map(summaryToAnnouncement));
+      setProfile(tenantProfile);
+      setDailyDigest(digest);
     } catch (error) {
       setItems([]);
+      setProfile(null);
       toast.error("Unable to load tenant data", {
         description: errorMessage(error),
       });
@@ -177,9 +213,13 @@ export default function App() {
 
   useEffect(() => {
     if (settingsOpen) {
-      refreshRejected(tenant.id);
+      refreshProcessingNotes(tenant.id);
     }
-  }, [settingsOpen, tenant.id, refreshRejected]);
+  }, [settingsOpen, tenant.id, refreshProcessingNotes]);
+
+  useEffect(() => {
+    refreshDailyDigest(tenant.id, selectedDay ?? todayIso());
+  }, [tenant.id, selectedDay, refreshDailyDigest]);
 
   // ---- derived data ----
   const counts = useMemo(() => {
@@ -338,14 +378,14 @@ export default function App() {
     setFeedWorkflow({
       stage: "fetching",
       fetched: 0,
-      accepted: 0,
-      rejected: 0,
+      classified: 0,
+      skipped: 0,
       processed: 0,
       batch: 1,
     });
     try {
-      let accepted = 0;
-      let rejected = 0;
+      let classified = 0;
+      let skipped = 0;
       let offset = 0;
       let fetchBatch = 1;
 
@@ -357,14 +397,14 @@ export default function App() {
         const batchCount = response.accepted_count + response.rejected_count;
         if (batchCount === 0) break;
 
-        accepted += response.accepted_count;
-        rejected += response.rejected_count;
+        classified += response.accepted_count;
+        skipped += response.rejected_count;
         offset += batchCount;
         setFeedWorkflow({
           stage: "fetching",
-          fetched: accepted + rejected,
-          accepted,
-          rejected,
+          fetched: classified + skipped,
+          classified,
+          skipped,
           processed: 0,
           batch: fetchBatch,
         });
@@ -379,19 +419,19 @@ export default function App() {
       let processBatch = 1;
       setFeedWorkflow({
         stage: "processing",
-        fetched: accepted + rejected,
-        accepted,
-        rejected,
+        fetched: classified + skipped,
+        classified,
+        skipped,
         processed,
         batch: processBatch,
       });
 
-      while (processed < accepted) {
+      while (processed < classified) {
         setFeedWorkflow({
           stage: "processing",
-          fetched: accepted + rejected,
-          accepted,
-          rejected,
+          fetched: classified + skipped,
+          classified,
+          skipped,
           processed,
           batch: processBatch,
         });
@@ -399,9 +439,9 @@ export default function App() {
         processed += response.processed_count;
         setFeedWorkflow({
           stage: "processing",
-          fetched: accepted + rejected,
-          accepted,
-          rejected,
+          fetched: classified + skipped,
+          classified,
+          skipped,
           processed,
           batch: processBatch,
         });
@@ -411,19 +451,20 @@ export default function App() {
       }
 
       await refreshSummaries(tenant.id);
+      await refreshDailyDigest(tenant.id, selectedDay ?? todayIso());
       if (settingsOpen) {
-        await refreshRejected(tenant.id);
+        await refreshProcessingNotes(tenant.id);
       }
       setFeedWorkflow({
         stage: "completed",
-        fetched: accepted + rejected,
-        accepted,
-        rejected,
+        fetched: classified + skipped,
+        classified,
+        skipped,
         processed,
         batch: Math.max(processBatch - 1, 0),
       });
       toast.success("Mock feed fetched and processed", {
-        description: `${accepted} accepted · ${rejected} rejected · ${processed} summarized.`,
+        description: `${classified} classified · ${skipped} skipped · ${processed} summarized.`,
       });
     } catch (error) {
       const description = errorMessage(error);
@@ -444,7 +485,7 @@ export default function App() {
 
   const hideCard = (id: string) => {
     setHidden((h) => [...h, id]);
-    toast("Announcement hidden", {
+    toast("Email summary hidden", {
       action: { label: "Undo", onClick: () => setHidden((h) => h.filter((x) => x !== id)) },
     });
   };
@@ -471,6 +512,49 @@ export default function App() {
     }
   };
 
+  const saveProfile = async (payload: Omit<TenantProfile, "user_id" | "updated_at">) => {
+    setProfileSaving(true);
+    try {
+      const updated = await updateProfile(tenant.id, payload);
+      setProfile(updated);
+      toast.success("Profile context saved");
+    } catch (error) {
+      toast.error("Profile save failed", { description: errorMessage(error) });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const approveSuggestedTopic = async (topic: TopicSuggestion) => {
+    try {
+      const response = await approveTopic(tenant.id, topic.id);
+      setProfile(response.profile);
+      const alreadyLocal = customTopics.some(
+        (item) => item.label.toLowerCase() === response.topic.label.toLowerCase(),
+      );
+      if (!alreadyLocal) {
+        updateTopics((topics) => [
+          ...topics,
+          { id: makeTopicId(response.topic.label), label: response.topic.label, enabled: true },
+        ]);
+      }
+      await refreshDailyDigest(tenant.id, selectedDay ?? todayIso());
+      toast.success("Interest approved", { description: response.topic.label });
+    } catch (error) {
+      toast.error("Topic approval failed", { description: errorMessage(error) });
+    }
+  };
+
+  const dismissSuggestedTopic = async (topic: TopicSuggestion) => {
+    try {
+      await dismissTopic(tenant.id, topic.id);
+      await refreshDailyDigest(tenant.id, selectedDay ?? todayIso());
+      toast("Interest suggestion dismissed", { description: topic.label });
+    } catch (error) {
+      toast.error("Topic dismissal failed", { description: errorMessage(error) });
+    }
+  };
+
   const closeAudio = useCallback(() => setAudioTrack(null), []);
 
   return (
@@ -492,11 +576,14 @@ export default function App() {
           <SettingsSidebar
             open={settingsOpen}
             tenantName={tenant.name}
-            rejectedEmails={rejectedEmails}
-            loadingRejected={loadingRejected}
-            rejectedError={rejectedError}
+            processingNotes={processingNotes}
+            loadingNotes={loadingNotes}
+            notesError={notesError}
+            profile={profile}
+            profileSaving={profileSaving}
             onClose={() => setSettingsOpen(false)}
-            onRefreshRejected={() => refreshRejected(tenant.id)}
+            onRefreshNotes={() => refreshProcessingNotes(tenant.id)}
+            onSaveProfile={saveProfile}
           />
         )}
       </AnimatePresence>
@@ -581,6 +668,13 @@ export default function App() {
 
               <Timeline days={timelineDays} selected={selectedDay} onSelect={setSelectedDay} />
 
+              <DailyDigest
+                digest={dailyDigest}
+                loading={loadingDigest}
+                onApproveTopic={approveSuggestedTopic}
+                onDismissTopic={dismissSuggestedTopic}
+              />
+
               <Metrics
                 visible={visibleFeedItems.length}
                 critical={critical}
@@ -594,7 +688,7 @@ export default function App() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Filter className="h-4 w-4" />
                   <span>
-                    Triage Feed
+                    Email Feed
                     {selectedDay && (
                       <span className="text-[#10b981]">
                         {" "}
@@ -647,7 +741,7 @@ export default function App() {
                     <p className="max-w-sm text-sm text-muted-foreground">
                       {items.length === 0
                         ? "No summaries yet. Ingest mock data, then process the feed."
-                        : "No announcements match your filters."}
+                        : "No email summaries match your filters."}
                     </p>
                   </div>
                 )}

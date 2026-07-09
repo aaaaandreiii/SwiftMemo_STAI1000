@@ -1,5 +1,6 @@
 import io
 import wave
+from datetime import date
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, WebSocket
@@ -23,17 +24,23 @@ from backend.schemas import (
     IngestedEmail,
     PreferencesResponse,
     PreferencesUpdateRequest,
+    ProcessingNotesResponse,
     ProcessRequest,
     ProcessResponse,
     RejectedEmailsResponse,
     SummariesResponse,
+    DailyDigestResponse,
+    TenantProfile,
+    TenantProfileUpdateRequest,
+    TopicActionResponse,
+    TopicSuggestionsResponse,
 )
 from backend.telemetry import telemetry_run
 
 
 settings = get_settings()
 
-app = FastAPI(title="SwiftMemo API", version="0.2.0")
+app = FastAPI(title="SwiftMemo API", version="0.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -128,8 +135,71 @@ def rejected_emails(
     user_id: str = Depends(current_user),
     limit: int | None = Query(default=None, ge=1, le=200),
 ) -> RejectedEmailsResponse:
-    items = DATABASE.rejected_emails(user_id, limit=limit)
+    items = DATABASE.processing_notes(user_id, limit=limit)
     return RejectedEmailsResponse(user_id=user_id, count=len(items), items=items)
+
+
+@app.get("/api/processing-notes", response_model=ProcessingNotesResponse)
+def processing_notes(
+    user_id: str = Depends(current_user),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> ProcessingNotesResponse:
+    items = DATABASE.processing_notes(user_id, limit=limit)
+    return ProcessingNotesResponse(user_id=user_id, count=len(items), items=items)
+
+
+@app.get("/api/profile", response_model=TenantProfile)
+def get_profile(user_id: str = Depends(current_user)) -> TenantProfile:
+    return TenantProfile.model_validate(DATABASE.get_profile(user_id))
+
+
+@app.put("/api/profile", response_model=TenantProfile)
+def put_profile(
+    request: TenantProfileUpdateRequest,
+    user_id: str = Depends(current_user),
+) -> TenantProfile:
+    profile = DATABASE.set_profile(
+        user_id,
+        role=request.role,
+        affiliation=request.affiliation,
+        interests=request.interests,
+        deadlines=request.deadlines,
+        schedules=request.schedules,
+        freeform_context=request.freeform_context,
+    )
+    return TenantProfile.model_validate(profile)
+
+
+@app.get("/api/topics/suggestions", response_model=TopicSuggestionsResponse)
+def topic_suggestions(user_id: str = Depends(current_user)) -> TopicSuggestionsResponse:
+    items = DATABASE.list_topic_suggestions(user_id)
+    return TopicSuggestionsResponse(user_id=user_id, count=len(items), items=items)
+
+
+@app.post("/api/topics/{topic_id}/approve", response_model=TopicActionResponse)
+def approve_topic(topic_id: str, user_id: str = Depends(current_user)) -> TopicActionResponse:
+    try:
+        payload = DATABASE.set_topic_status(user_id, topic_id, "active")
+        return TopicActionResponse.model_validate(payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown topic_id: {topic_id}") from exc
+
+
+@app.post("/api/topics/{topic_id}/dismiss", response_model=TopicActionResponse)
+def dismiss_topic(topic_id: str, user_id: str = Depends(current_user)) -> TopicActionResponse:
+    try:
+        payload = DATABASE.set_topic_status(user_id, topic_id, "dismissed")
+        return TopicActionResponse.model_validate(payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown topic_id: {topic_id}") from exc
+
+
+@app.get("/api/digest/daily", response_model=DailyDigestResponse)
+def daily_digest(
+    user_id: str = Depends(current_user),
+    digest_date: date = Query(alias="date"),
+) -> DailyDigestResponse:
+    return DailyDigestResponse.model_validate(DATABASE.daily_digest(user_id, digest_date))
 
 
 @app.post("/api/chat", response_model=ChatResponse)

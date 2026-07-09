@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -24,7 +24,7 @@ def sample_guardrail() -> GuardrailResult:
     return GuardrailResult(is_valid=True, reason="official", confidence=0.9)
 
 
-def rejected_guardrail(reason: str = "not an official announcement") -> GuardrailResult:
+def skipped_guardrail(reason: str = "unreadable or skipped record") -> GuardrailResult:
     return GuardrailResult(is_valid=False, reason=reason, confidence=0.8)
 
 
@@ -139,7 +139,7 @@ def test_ingest_endpoint_supports_mock_limit_and_offset(monkeypatch, tmp_path):
     assert db.get_email("tenant-a", "email-1") is not None
 
 
-def test_rejected_endpoint_lists_only_current_tenant_rejections(monkeypatch, tmp_path):
+def test_processing_notes_endpoint_lists_only_current_tenant_skips(monkeypatch, tmp_path):
     db = SwiftMemoDB(tmp_path / "swiftmemo.db")
     monkeypatch.setattr(main, "DATABASE", db)
     db.save_ingested(
@@ -152,27 +152,78 @@ def test_rejected_endpoint_lists_only_current_tenant_rejections(monkeypatch, tmp
     db.save_ingested(
         "tenant-a",
         IngestedEmail(
-            email=sample_email("rejected-a", subject="Canvas Grade Posted"),
-            guardrail=rejected_guardrail("personal course notification"),
+            email=sample_email("skipped-a", subject="Canvas Grade Posted"),
+            guardrail=skipped_guardrail("legacy skipped record"),
         ),
     )
     db.save_ingested(
         "tenant-b",
         IngestedEmail(
-            email=sample_email("rejected-b", subject="Other Tenant Rejection"),
-            guardrail=rejected_guardrail("wrong tenant"),
+            email=sample_email("skipped-b", subject="Other Tenant Skip"),
+            guardrail=skipped_guardrail("wrong tenant"),
         ),
     )
 
     client = TestClient(main.app)
-    response = client.get("/api/rejected", headers={"X-User-ID": "tenant-a"})
+    response = client.get("/api/processing-notes", headers={"X-User-ID": "tenant-a"})
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["user_id"] == "tenant-a"
     assert payload["count"] == 1
-    assert payload["items"][0]["email"]["id"] == "rejected-a"
-    assert payload["items"][0]["guardrail"]["reason"] == "personal course notification"
+    assert payload["items"][0]["email"]["id"] == "skipped-a"
+    assert payload["items"][0]["guardrail"]["reason"] == "legacy skipped record"
+
+
+def test_ingest_endpoint_accepts_all_readable_email_kinds(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    monkeypatch.setattr(main, "DATABASE", db)
+    emails = [
+        EmailRecord(
+            id="personal-1",
+            sender="friend@example.com",
+            subject="Dinner later?",
+            date=datetime.fromisoformat("2026-07-08T18:00:00+08:00"),
+            body="Are you free after class? Where to eat near campus?",
+        ),
+        EmailRecord(
+            id="canvas-1",
+            sender="notifications@instructure.com",
+            subject="Assignment Graded: Lab",
+            date=datetime.fromisoformat("2026-07-08T19:00:00+08:00"),
+            body="Your assignment has been graded.",
+        ),
+        EmailRecord(
+            id="promo-1",
+            sender="deals@example.com",
+            subject="Limited time laptop sale",
+            date=datetime.fromisoformat("2026-07-08T20:00:00+08:00"),
+            body="Buy discounted accessories today.",
+        ),
+    ]
+
+    def fake_load_mock_emails(limit=None, offset=0, path=None):
+        selected = emails[offset:]
+        return selected[:limit] if limit is not None else selected
+
+    monkeypatch.setattr(main, "load_mock_emails", fake_load_mock_emails)
+
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/ingest",
+        json={"load_mock": True},
+        headers={"X-User-ID": "tenant-a"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted_count"] == 3
+    assert payload["rejected_count"] == 0
+    assert {item["guardrail"]["email_kind"] for item in payload["accepted"]} == {
+        "personal",
+        "lms_notification",
+        "promotional",
+    }
 
 
 def install_fast_process_stub(monkeypatch, db: SwiftMemoDB) -> None:
@@ -221,6 +272,26 @@ def test_process_endpoint_skips_emails_that_already_have_summaries(monkeypatch, 
     assert [item["email_id"] for item in payload["items"]] == ["email-1", "email-2"]
 
 
+def test_process_endpoint_processes_legacy_guardrail_invalid_emails(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    email = sample_email("legacy-invalid", subject="Canvas Grade Posted")
+    db.save_ingested(user_id, IngestedEmail(email=email, guardrail=skipped_guardrail()))
+    install_fast_process_stub(monkeypatch, db)
+
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/process",
+        json={"limit": 5, "offset": 0},
+        headers={"X-User-ID": user_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed_count"] == 1
+    assert payload["items"][0]["email_id"] == "legacy-invalid"
+
+
 def test_process_endpoint_limit_one_processes_distinct_emails_until_empty(
     monkeypatch,
     tmp_path,
@@ -258,3 +329,137 @@ def test_process_endpoint_limit_one_processes_distinct_emails_until_empty(
     assert first.json()["items"][0]["email_id"] == "email-0"
     assert second.json()["items"][0]["email_id"] == "email-1"
     assert third.json()["items"] == []
+
+
+def test_personal_email_heuristic_summary():
+    email = EmailRecord(
+        id="personal-summary",
+        sender="friend@example.com",
+        subject="Dinner later?",
+        date=datetime.fromisoformat("2026-07-08T18:00:00+08:00"),
+        body="Are you free after class? We can discuss the project over dinner.",
+    )
+
+    summary = agents.heuristic_extract_summary(email)
+
+    assert summary.title == "Dinner later?"
+    assert "free after class" in summary.summary
+    assert summary.category == "other"
+
+
+def test_topic_suggestion_generation_from_repeated_noninstitutional_emails(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    guardrail = GuardrailResult(
+        is_valid=True,
+        reason="lms",
+        confidence=0.9,
+        email_kind="lms_notification",
+    )
+    for index in range(2):
+        email = EmailRecord(
+            id=f"canvas-{index}",
+            sender="notifications@instructure.com",
+            subject=f"Canvas Assignment Graded {index}",
+            date=datetime.fromisoformat(f"2026-07-0{index + 8}T10:00:00+08:00"),
+            body="Your Canvas assignment has been graded.",
+        )
+        db.save_ingested(user_id, IngestedEmail(email=email, guardrail=guardrail))
+        db.save_triage(
+            user_id,
+            email.id,
+            TriageSummary(
+                title="Canvas assignment graded",
+                summary="Canvas posted an assignment grade notification.",
+                deadline_date=None,
+                category="academic",
+                urgency_score=2,
+            ),
+            True,
+        )
+
+    suggestions = db.list_topic_suggestions(user_id, statuses=("pending",))
+
+    canvas = [item for item in suggestions if item["label"] == "canvas"]
+    assert canvas
+    assert canvas[0]["source_count"] == 2
+
+
+def test_daily_digest_results_for_selected_date(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    digest_day = date(2026, 7, 9)
+    personal = EmailRecord(
+        id="personal-update",
+        sender="friend@example.com",
+        subject="Project check-in",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body="Can we meet today to review the project?",
+    )
+    deadline = EmailRecord(
+        id="deadline-update",
+        sender="registrar@dlsu.edu.ph",
+        subject="Enrollment deadline",
+        date=datetime.fromisoformat("2026-07-08T09:00:00+08:00"),
+        body="Confirm enrollment by July 9, 2026.",
+    )
+    db.save_ingested(
+        user_id,
+        IngestedEmail(
+            email=personal,
+            guardrail=GuardrailResult(
+                is_valid=True,
+                reason="personal",
+                confidence=0.9,
+                email_kind="personal",
+            ),
+        ),
+    )
+    db.save_ingested(
+        user_id,
+        IngestedEmail(
+            email=deadline,
+            guardrail=GuardrailResult(
+                is_valid=True,
+                reason="institutional",
+                confidence=0.9,
+                is_institutional=True,
+                email_kind="institutional",
+            ),
+        ),
+    )
+    db.save_triage(
+        user_id,
+        personal.id,
+        TriageSummary(
+            title="Project check-in",
+            summary="A friend asked to meet today to review the project.",
+            deadline_date=None,
+            category="other",
+            urgency_score=4,
+        ),
+        True,
+    )
+    db.save_triage(
+        user_id,
+        deadline.id,
+        TriageSummary(
+            title="Enrollment deadline",
+            summary="Confirm enrollment by the deadline.",
+            deadline_date=digest_day,
+            category="academic",
+            urgency_score=5,
+        ),
+        True,
+    )
+
+    digest = db.daily_digest(user_id, digest_day)
+
+    assert [item["email_id"] for item in digest["deadlines"]] == ["deadline-update"]
+    assert [item["email_id"] for item in digest["personal_service_updates"]] == [
+        "personal-update"
+    ]
+    assert {item["email_id"] for item in digest["important_emails"]} == {
+        "personal-update",
+        "deadline-update",
+    }

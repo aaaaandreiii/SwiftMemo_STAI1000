@@ -39,6 +39,8 @@ class GuardrailResult(BaseModel):
     is_valid: bool
     reason: str
     confidence: float = Field(ge=0.0, le=1.0)
+    is_institutional: bool = False
+    email_kind: str = Field(default="other", min_length=1)
 
 
 class IngestRequest(BaseModel):
@@ -61,6 +63,12 @@ class IngestResponse(BaseModel):
 
 
 class RejectedEmailsResponse(BaseModel):
+    user_id: str
+    count: int
+    items: list[IngestedEmail]
+
+
+class ProcessingNotesResponse(BaseModel):
     user_id: str
     count: int
     items: list[IngestedEmail]
@@ -145,6 +153,73 @@ class SummariesResponse(BaseModel):
     user_id: str
     count: int
     items: list[SummaryItem]
+
+
+class TenantProfile(BaseModel):
+    user_id: str
+    role: str = ""
+    affiliation: str = ""
+    interests: list[str] = Field(default_factory=list)
+    deadlines: list[str] = Field(default_factory=list)
+    schedules: list[str] = Field(default_factory=list)
+    freeform_context: str = ""
+    updated_at: datetime | None = None
+
+
+class TenantProfileUpdateRequest(BaseModel):
+    role: str = Field(default="", max_length=200)
+    affiliation: str = Field(default="", max_length=200)
+    interests: list[str] = Field(default_factory=list, max_length=50)
+    deadlines: list[str] = Field(default_factory=list, max_length=50)
+    schedules: list[str] = Field(default_factory=list, max_length=50)
+    freeform_context: str = Field(default="", max_length=3000)
+
+
+class TopicSuggestion(BaseModel):
+    id: str
+    label: str
+    source_count: int
+    status: Literal["pending", "active", "dismissed"]
+    sample_subjects: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class TopicSuggestionsResponse(BaseModel):
+    user_id: str
+    count: int
+    items: list[TopicSuggestion]
+
+
+class TopicActionResponse(BaseModel):
+    topic: TopicSuggestion
+    profile: TenantProfile
+
+
+class DailyDigestItem(BaseModel):
+    summary_id: str
+    email_id: str
+    source_subject: str
+    sender: str
+    email_date: datetime
+    title: str
+    summary: str
+    deadline_date: date | None = None
+    category: Category
+    urgency_score: int = Field(ge=1, le=5)
+    visible_in_feed: bool
+    email_kind: str = "other"
+    is_institutional: bool = False
+
+
+class DailyDigestResponse(BaseModel):
+    user_id: str
+    digest_date: date
+    important_emails: list[DailyDigestItem]
+    deadlines: list[DailyDigestItem]
+    personal_service_updates: list[DailyDigestItem]
+    recurring_topics: list[TopicSuggestion]
+    suggested_interests: list[TopicSuggestion]
 
 
 class PreferencesUpdateRequest(BaseModel):

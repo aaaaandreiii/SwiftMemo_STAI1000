@@ -13,26 +13,26 @@ from backend.telemetry import configure_mlflow
 
 def main() -> None:
     emails = load_mock_emails()
-    expected_valid = {
-        email.id: not email.id.startswith("non-hda-") and email.id != "hda-2026-008"
+    expected_processable = {
+        email.id: bool((email.subject or "").strip() or (email.body or "").strip())
         for email in emails
     }
 
-    guardrail_true_positive = 0
-    guardrail_false_positive = 0
-    guardrail_false_negative = 0
+    classifier_true_positive = 0
+    classifier_false_positive = 0
+    classifier_false_negative = 0
     schema_success = 0
     schema_total = 0
 
     for email in emails:
         result = heuristic_validate_announcement(email)
-        expected = expected_valid[email.id]
+        expected = expected_processable[email.id]
         if result.is_valid and expected:
-            guardrail_true_positive += 1
+            classifier_true_positive += 1
         elif result.is_valid and not expected:
-            guardrail_false_positive += 1
+            classifier_false_positive += 1
         elif not result.is_valid and expected:
-            guardrail_false_negative += 1
+            classifier_false_negative += 1
 
         if expected:
             schema_total += 1
@@ -43,12 +43,14 @@ def main() -> None:
             except (ValidationError, ValueError):
                 pass
 
-    precision_denominator = guardrail_true_positive + guardrail_false_positive
-    recall_denominator = guardrail_true_positive + guardrail_false_negative
-    guardrail_precision = (
-        guardrail_true_positive / precision_denominator if precision_denominator else 0.0
+    precision_denominator = classifier_true_positive + classifier_false_positive
+    recall_denominator = classifier_true_positive + classifier_false_negative
+    classifier_precision = (
+        classifier_true_positive / precision_denominator if precision_denominator else 0.0
     )
-    guardrail_recall = guardrail_true_positive / recall_denominator if recall_denominator else 0.0
+    classifier_recall = (
+        classifier_true_positive / recall_denominator if recall_denominator else 0.0
+    )
     schema_success_rate = schema_success / schema_total if schema_total else 0.0
 
     base = date(2026, 7, 8)
@@ -66,8 +68,8 @@ def main() -> None:
     calendar_accuracy = calendar_correct / len(calendar_cases)
 
     report = {
-        "guardrail_precision": round(guardrail_precision, 4),
-        "guardrail_recall": round(guardrail_recall, 4),
+        "classifier_precision": round(classifier_precision, 4),
+        "classifier_recall": round(classifier_recall, 4),
         "schema_validation_success_rate": round(schema_success_rate, 4),
         "calendar_relative_date_accuracy": round(calendar_accuracy, 4),
         "counts": {
@@ -81,8 +83,8 @@ def main() -> None:
         try:
             with mlflow.start_run(run_name="deterministic_evaluation"):
                 for key in (
-                    "guardrail_precision",
-                    "guardrail_recall",
+                    "classifier_precision",
+                    "classifier_recall",
                     "schema_validation_success_rate",
                     "calendar_relative_date_accuracy",
                 ):

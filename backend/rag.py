@@ -16,15 +16,15 @@ from backend.schemas import ChatResponse, DraftResponse, EmailRecord, SourceDocu
 from backend.telemetry import telemetry_run
 
 
-RAG_SYSTEM_PROMPT = """You answer university policy and announcement questions for SwiftMemo.
+RAG_SYSTEM_PROMPT = """You answer email archive questions for SwiftMemo.
 
-Use only the retrieved context for factual claims. If the answer is not in the context, say that the available HDA context does not contain enough information. Cite subjects and dates when useful.
+Use only the retrieved context for factual claims. If the answer is not in the context, say that the available email context does not contain enough information. Cite subjects and dates when useful.
 """
 
 
-DRAFT_SYSTEM_PROMPT = """You write professional university email reply drafts.
+DRAFT_SYSTEM_PROMPT = """You write professional email reply drafts.
 
-Use the retrieved tenant-scoped announcement context only as background. Keep the draft concise, respectful, and action-oriented. Do not invent policy details.
+Use the retrieved tenant-scoped email context only as background. Keep the draft concise, respectful, and action-oriented. Do not invent details.
 """
 
 
@@ -49,7 +49,7 @@ class RagService:
         self._collection = self._client.get_or_create_collection(
             name=collection_name or _collection_name_for_embeddings(self.settings),
             metadata={
-                "description": "SwiftMemo tenant-isolated HDA memory",
+                "description": "SwiftMemo tenant-isolated email memory",
                 "embedding_provider": self.settings.embedding_provider,
                 "embedding_model": _embedding_model_name(self.settings),
             },
@@ -254,7 +254,7 @@ def _small_talk_answer(message: str) -> str | None:
     normalized = re.sub(r"\s+", " ", normalized)
     if not normalized:
         return (
-            "Ask me about your archived announcements, deadlines, requirements, "
+            "Ask me about archived emails, deadlines, requirements, "
             "or email drafts and I will use your private SwiftMemo archive."
         )
 
@@ -283,16 +283,16 @@ def _small_talk_answer(message: str) -> str | None:
     if normalized in greetings:
         return (
             "Hi. Ask me about deadlines, requirements, payments, campus access, "
-            "or any announcement in your SwiftMemo archive."
+            "or any email in your SwiftMemo archive."
         )
     if normalized in thanks:
         return "You are welcome. I can check the archive again whenever you need a deadline or requirement."
     if normalized in acknowledgements:
-        return "Got it. Send an announcement question when you are ready."
+        return "Got it. Send an email archive question when you are ready."
     if normalized in identity_prompts:
         return (
             "I am the SwiftMemo copilot. I answer questions using your tenant-scoped "
-            "announcement archive and can help draft concise replies."
+            "email archive and can help draft concise replies."
         )
 
     words = normalized.split()

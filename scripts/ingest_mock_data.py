@@ -17,8 +17,8 @@ def main() -> None:
     if args.limit:
         dataset = dataset[: args.limit]
 
-    accepted = 0
-    rejected = 0
+    classified = 0
+    skipped = 0
     for record in dataset:
         response = requests.post(
             f"{args.api.rstrip('/')}/api/ingest",
@@ -28,10 +28,10 @@ def main() -> None:
         )
         response.raise_for_status()
         result = response.json()
-        accepted += result["accepted_count"]
-        rejected += result["rejected_count"]
+        classified += result["accepted_count"]
+        skipped += result["rejected_count"]
 
-    print(json.dumps({"accepted": accepted, "rejected": rejected}, indent=2))
+    print(json.dumps({"classified": classified, "skipped": skipped}, indent=2))
 
 
 if __name__ == "__main__":

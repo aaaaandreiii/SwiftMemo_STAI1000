@@ -15,8 +15,8 @@ import { CATEGORIES, type CategoryKey, type CustomTopic } from "../data";
 export interface FeedWorkflowState {
   stage: "idle" | "fetching" | "processing" | "completed" | "error";
   fetched: number;
-  accepted: number;
-  rejected: number;
+  classified: number;
+  skipped: number;
   processed: number;
   batch: number;
   error?: string;
@@ -161,11 +161,11 @@ export function Sidebar({
                 <CheckCircle2 className="h-3.5 w-3.5" />
               )}
               {workflow.stage === "fetching" &&
-                `${workflow.fetched} fetched · ${workflow.accepted} accepted · ${workflow.rejected} rejected`}
+                `${workflow.fetched} fetched · ${workflow.classified} classified · ${workflow.skipped} skipped`}
               {workflow.stage === "processing" &&
-                `${workflow.processed}/${workflow.accepted} summarized · one at a time`}
+                `${workflow.processed}/${workflow.classified} summarized · one at a time`}
               {workflow.stage === "completed" &&
-                `${workflow.processed} summarized · ${workflow.rejected} rejected`}
+                `${workflow.processed} summarized · ${workflow.skipped} skipped`}
               {workflow.stage === "error" && "Fetch/process failed"}
             </div>
             {workflow.error && (

@@ -30,6 +30,8 @@ export interface GuardrailResult {
   is_valid: boolean;
   reason: string;
   confidence: number;
+  is_institutional: boolean;
+  email_kind: string;
 }
 
 export interface IngestedEmail {
@@ -52,6 +54,70 @@ export interface RejectedEmailsResponse {
   user_id: string;
   count: number;
   items: IngestedEmail[];
+}
+
+export interface ProcessingNotesResponse {
+  user_id: string;
+  count: number;
+  items: IngestedEmail[];
+}
+
+export interface TenantProfile {
+  user_id: string;
+  role: string;
+  affiliation: string;
+  interests: string[];
+  deadlines: string[];
+  schedules: string[];
+  freeform_context: string;
+  updated_at: string | null;
+}
+
+export interface TopicSuggestion {
+  id: string;
+  label: string;
+  source_count: number;
+  status: "pending" | "active" | "dismissed";
+  sample_subjects: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TopicSuggestionsResponse {
+  user_id: string;
+  count: number;
+  items: TopicSuggestion[];
+}
+
+export interface TopicActionResponse {
+  topic: TopicSuggestion;
+  profile: TenantProfile;
+}
+
+export interface DailyDigestItem {
+  summary_id: string;
+  email_id: string;
+  source_subject: string;
+  sender: string;
+  email_date: string;
+  title: string;
+  summary: string;
+  deadline_date: string | null;
+  category: BackendCategory;
+  urgency_score: 1 | 2 | 3 | 4 | 5;
+  visible_in_feed: boolean;
+  email_kind: string;
+  is_institutional: boolean;
+}
+
+export interface DailyDigestResponse {
+  user_id: string;
+  digest_date: string;
+  important_emails: DailyDigestItem[];
+  deadlines: DailyDigestItem[];
+  personal_service_updates: DailyDigestItem[];
+  recurring_topics: TopicSuggestion[];
+  suggested_interests: TopicSuggestion[];
 }
 
 export interface PreferencesResponse {
@@ -123,7 +189,7 @@ function errorDetailFromResponse(raw: string, status: number, statusText: string
   if (status === 524 || /error code\s*524/i.test(raw) || /cloudflare/i.test(raw)) {
     return (
       "That hosted request timed out at the edge; the backend may still be finishing it. "
-      + "Retry safely, because already summarized announcements are skipped."
+      + "Retry safely, because already summarized emails are skipped."
     );
   }
 
@@ -188,6 +254,50 @@ export function getSummaries(userId: string, visibleOnly = false): Promise<Summa
 
 export function getRejectedEmails(userId: string): Promise<RejectedEmailsResponse> {
   return request<RejectedEmailsResponse>("/api/rejected", { userId });
+}
+
+export function getProcessingNotes(userId: string): Promise<ProcessingNotesResponse> {
+  return request<ProcessingNotesResponse>("/api/processing-notes", { userId });
+}
+
+export function getProfile(userId: string): Promise<TenantProfile> {
+  return request<TenantProfile>("/api/profile", { userId });
+}
+
+export function updateProfile(
+  userId: string,
+  profile: Omit<TenantProfile, "user_id" | "updated_at">,
+): Promise<TenantProfile> {
+  return request<TenantProfile>("/api/profile", {
+    method: "PUT",
+    userId,
+    body: JSON.stringify(profile),
+  });
+}
+
+export function getTopicSuggestions(userId: string): Promise<TopicSuggestionsResponse> {
+  return request<TopicSuggestionsResponse>("/api/topics/suggestions", { userId });
+}
+
+export function approveTopic(userId: string, topicId: string): Promise<TopicActionResponse> {
+  return request<TopicActionResponse>(`/api/topics/${encodeURIComponent(topicId)}/approve`, {
+    method: "POST",
+    userId,
+  });
+}
+
+export function dismissTopic(userId: string, topicId: string): Promise<TopicActionResponse> {
+  return request<TopicActionResponse>(`/api/topics/${encodeURIComponent(topicId)}/dismiss`, {
+    method: "POST",
+    userId,
+  });
+}
+
+export function getDailyDigest(userId: string, digestDate: string): Promise<DailyDigestResponse> {
+  return request<DailyDigestResponse>(
+    `/api/digest/daily?date=${encodeURIComponent(digestDate)}`,
+    { userId },
+  );
 }
 
 export function getPreferences(userId: string): Promise<PreferencesResponse> {

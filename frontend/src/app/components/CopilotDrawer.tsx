@@ -137,7 +137,7 @@ export function CopilotDrawer({
     if (genDrafting) return;
     setGenDrafting(true);
     setDraft("");
-    const subject = context ? context.title : "the selected announcement";
+    const subject = context ? context.title : "the selected email";
     const requestPrompt =
       prompt.trim() || `Draft a professional reply about ${subject}.`;
     try {
@@ -194,7 +194,7 @@ export function CopilotDrawer({
       clearInterval(streamTimer.current);
       setStreaming(true);
       const contextualQuestion = context
-        ? `${question}\n\nSelected announcement: ${context.sourceSubject} (email_id: ${context.emailId}).`
+        ? `${question}\n\nSelected email: ${context.sourceSubject} (email_id: ${context.emailId}).`
         : question;
       try {
         const response = await chatArchive(tenantId, contextualQuestion, `chat-${tenantId}`);
@@ -588,7 +588,7 @@ export function CopilotDrawer({
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && ask(chatInput)}
-                      placeholder="Ask about your announcements…"
+                      placeholder="Ask about your email archive..."
                       disabled={streaming}
                       className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-60"
                     />
