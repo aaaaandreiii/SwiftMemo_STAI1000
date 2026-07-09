@@ -95,7 +95,7 @@ export function Sidebar({
           : "Sync";
 
   return (
-    <aside className="glass flex h-full flex-col gap-5 overflow-y-auto rounded-none border-y-0 border-l-0 p-4">
+    <aside className="glass flex h-full min-h-0 max-h-full flex-col gap-5 overflow-y-auto overscroll-contain rounded-none border-y-0 border-l-0 p-4 [scrollbar-gutter:stable]">
       {/* System status */}
       <section>
         <p className="mb-2 font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">

@@ -652,9 +652,9 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[17rem_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[17rem_1fr]">
         {/* Sidebar — desktop */}
-        <div className="hidden lg:block">
+        <div className="hidden min-h-0 overflow-hidden lg:block">
           <Sidebar
             prefs={prefs}
             onToggle={togglePref}
@@ -688,7 +688,7 @@ export default function App() {
                 animate={{ x: 0 }}
                 exit={{ x: "-100%" }}
                 transition={{ type: "spring", stiffness: 320, damping: 34 }}
-                className="fixed bottom-0 left-0 top-16 z-50 w-72 lg:hidden"
+                className="fixed bottom-0 left-0 top-16 z-50 min-h-0 w-72 overflow-hidden lg:hidden"
               >
                 <Sidebar
                   prefs={prefs}
