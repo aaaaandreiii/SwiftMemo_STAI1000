@@ -10,7 +10,7 @@ from langgraph.prebuilt import create_react_agent
 
 from backend.config import get_settings
 from backend.database import DATABASE
-from backend.guardrails import validate_announcement
+from backend.guardrails import heuristic_validate_announcement, validate_announcement
 from backend.ingestion import email_to_text, load_mock_emails
 from backend.json_utils import extract_json_object
 from backend.llm import build_chat_model, invoke_llm
@@ -188,6 +188,39 @@ def process_email(
     )
 
 
+def process_email_fast(
+    email: EmailRecord,
+    user_id: str,
+    guardrail: GuardrailResult | None = None,
+) -> ProcessedEmail:
+    from backend.rag import RAG_SERVICE
+
+    final_guardrail = guardrail or heuristic_validate_announcement(email)
+    DATABASE.save_ingested(user_id, IngestedEmail(email=email, guardrail=final_guardrail))
+    if not final_guardrail.is_valid:
+        raise ValueError(f"Email rejected by guardrails: {final_guardrail.reason}")
+
+    summary = heuristic_extract_summary(email)
+    visible = DATABASE.category_enabled(user_id, summary.category)
+    summary_id = DATABASE.save_triage(user_id, email.id, summary, visible)
+    RAG_SERVICE.index_email_summary(
+        user_id,
+        email,
+        summary,
+        visible,
+        use_fallback_embeddings=True,
+    )
+    return ProcessedEmail(
+        email_id=email.id,
+        source_subject=email.subject,
+        guardrail=final_guardrail,
+        result=summary,
+        summary_id=summary_id,
+        visible_in_feed=visible,
+        tool_observation="Fast deterministic processing for mock/feed batches.",
+    )
+
+
 def process_batch(user_id: str, limit: int, offset: int = 0) -> list[ProcessedEmail]:
     emails = DATABASE.valid_emails(user_id, limit=limit, offset=offset)
     if not emails:
@@ -196,7 +229,7 @@ def process_batch(user_id: str, limit: int, offset: int = 0) -> list[ProcessedEm
     processed: list[ProcessedEmail] = []
     for email in emails[:limit]:
         try:
-            processed.append(process_email(email, user_id=user_id))
+            processed.append(process_email_fast(email, user_id=user_id))
         except ValueError:
             continue
     return processed

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.agents import generate_draft, process_batch, process_email
 from backend.config import get_settings
 from backend.database import DATABASE
-from backend.guardrails import validate_announcement
+from backend.guardrails import heuristic_validate_announcement, validate_announcement
 from backend.ingestion import load_mock_emails
 from backend.rag import RAG_SERVICE
 from backend.schemas import (
@@ -70,7 +70,11 @@ def ingest(request: IngestRequest, user_id: str = Depends(current_user)) -> Inge
         accepted: list[IngestedEmail] = []
         rejected: list[IngestedEmail] = []
         for email in emails:
-            guardrail = validate_announcement(email)
+            guardrail = (
+                heuristic_validate_announcement(email)
+                if request.email is None and request.load_mock
+                else validate_announcement(email)
+            )
             item = IngestedEmail(email=email, guardrail=guardrail)
             DATABASE.save_ingested(user_id, item)
             if guardrail.is_valid:

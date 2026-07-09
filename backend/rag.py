@@ -61,6 +61,7 @@ class RagService:
         email: EmailRecord,
         summary: TriageSummary,
         visible_in_feed: bool,
+        use_fallback_embeddings: bool = False,
     ) -> None:
         chunks = _chunk_text(email_to_text(email))
         ids = [_stable_chunk_id(user_id, email.id, index, chunk) for index, chunk in enumerate(chunks)]
@@ -76,7 +77,11 @@ class RagService:
             }
             for _ in chunks
         ]
-        embeddings = self._embed_documents(chunks)
+        embeddings = (
+            [_hash_embedding(chunk, dimensions=self._fallback_dimensions()) for chunk in chunks]
+            if use_fallback_embeddings
+            else self._embed_documents(chunks)
+        )
         with self._lock:
             self._collection.upsert(
                 ids=ids,
