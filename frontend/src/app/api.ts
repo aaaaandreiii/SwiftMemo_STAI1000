@@ -18,13 +18,40 @@ export interface HealthResponse {
   chroma_collection: string;
 }
 
+export interface EmailRecord {
+  id: string;
+  sender: string;
+  subject: string;
+  date: string;
+  body: string;
+}
+
+export interface GuardrailResult {
+  is_valid: boolean;
+  reason: string;
+  confidence: number;
+}
+
+export interface IngestedEmail {
+  email: EmailRecord;
+  guardrail: GuardrailResult;
+}
+
 export interface IngestResponse {
   accepted_count: number;
   rejected_count: number;
+  accepted: IngestedEmail[];
+  rejected: IngestedEmail[];
 }
 
 export interface ProcessResponse {
   processed_count: number;
+}
+
+export interface RejectedEmailsResponse {
+  user_id: string;
+  count: number;
+  items: IngestedEmail[];
 }
 
 export interface PreferencesResponse {
@@ -157,6 +184,10 @@ export function processFeed(userId: string, limit = 25, offset = 0): Promise<Pro
 
 export function getSummaries(userId: string, visibleOnly = false): Promise<SummariesResponse> {
   return request<SummariesResponse>(`/api/summaries?visible_only=${visibleOnly}`, { userId });
+}
+
+export function getRejectedEmails(userId: string): Promise<RejectedEmailsResponse> {
+  return request<RejectedEmailsResponse>("/api/rejected", { userId });
 }
 
 export function getPreferences(userId: string): Promise<PreferencesResponse> {

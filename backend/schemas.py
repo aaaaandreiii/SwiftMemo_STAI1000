@@ -60,6 +60,12 @@ class IngestResponse(BaseModel):
     rejected: list[IngestedEmail]
 
 
+class RejectedEmailsResponse(BaseModel):
+    user_id: str
+    count: int
+    items: list[IngestedEmail]
+
+
 class TriageSummary(BaseModel):
     title: str = Field(..., min_length=3)
     summary: str = Field(..., min_length=10)

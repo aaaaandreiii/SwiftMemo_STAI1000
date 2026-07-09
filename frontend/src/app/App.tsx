@@ -6,6 +6,7 @@ import { Toaster, toast } from "sonner";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import type { FeedWorkflowState } from "./components/Sidebar";
+import { SettingsSidebar } from "./components/SettingsSidebar";
 import { Timeline, type TimelineDay } from "./components/Timeline";
 import { Metrics, type MetricFilter } from "./components/Metrics";
 import { AnnouncementCard } from "./components/AnnouncementCard";
@@ -14,11 +15,13 @@ import { AudioPlayer } from "./components/AudioPlayer";
 import {
   getHealth,
   getPreferences,
+  getRejectedEmails,
   getSummaries,
   ingestMockData,
   processFeed,
   sendFeedback,
   updatePreferences,
+  type IngestedEmail,
 } from "./api";
 import {
   CATEGORIES,
@@ -95,6 +98,10 @@ export default function App() {
     provider: "unknown",
   });
   const [mobileSidebar, setMobileSidebar] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rejectedEmails, setRejectedEmails] = useState<IngestedEmail[]>([]);
+  const [loadingRejected, setLoadingRejected] = useState(false);
+  const [rejectedError, setRejectedError] = useState<string | null>(null);
 
   const refreshHealth = useCallback(async () => {
     const started = performance.now();
@@ -115,6 +122,19 @@ export default function App() {
     setItems(response.items.map(summaryToAnnouncement));
   }, []);
 
+  const refreshRejected = useCallback(async (tenantId: string) => {
+    setLoadingRejected(true);
+    setRejectedError(null);
+    try {
+      const response = await getRejectedEmails(tenantId);
+      setRejectedEmails(response.items);
+    } catch (error) {
+      setRejectedError(errorMessage(error));
+    } finally {
+      setLoadingRejected(false);
+    }
+  }, []);
+
   const loadTenant = useCallback(async () => {
     setLoadingSummaries(true);
     setHidden([]);
@@ -122,6 +142,8 @@ export default function App() {
     setMetricFilter("visible");
     setContext(null);
     setAudioTrack(null);
+    setRejectedEmails([]);
+    setRejectedError(null);
     try {
       const [preferences, summaries] = await Promise.all([
         getPreferences(tenant.id),
@@ -152,6 +174,12 @@ export default function App() {
   useEffect(() => {
     loadTenant();
   }, [loadTenant]);
+
+  useEffect(() => {
+    if (settingsOpen) {
+      refreshRejected(tenant.id);
+    }
+  }, [settingsOpen, tenant.id, refreshRejected]);
 
   // ---- derived data ----
   const counts = useMemo(() => {
@@ -383,6 +411,9 @@ export default function App() {
       }
 
       await refreshSummaries(tenant.id);
+      if (settingsOpen) {
+        await refreshRejected(tenant.id);
+      }
       setFeedWorkflow({
         stage: "completed",
         fetched: accepted + rejected,
@@ -452,8 +483,23 @@ export default function App() {
         }}
         query={query}
         onQueryChange={setQuery}
+        onSettingsOpen={() => setSettingsOpen(true)}
         online={health.online}
       />
+
+      <AnimatePresence>
+        {settingsOpen && (
+          <SettingsSidebar
+            open={settingsOpen}
+            tenantName={tenant.name}
+            rejectedEmails={rejectedEmails}
+            loadingRejected={loadingRejected}
+            rejectedError={rejectedError}
+            onClose={() => setSettingsOpen(false)}
+            onRefreshRejected={() => refreshRejected(tenant.id)}
+          />
+        )}
+      </AnimatePresence>
 
       <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[17rem_1fr]">
         {/* Sidebar — desktop */}

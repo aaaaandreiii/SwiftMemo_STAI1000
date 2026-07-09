@@ -25,6 +25,7 @@ from backend.schemas import (
     PreferencesUpdateRequest,
     ProcessRequest,
     ProcessResponse,
+    RejectedEmailsResponse,
     SummariesResponse,
 )
 from backend.telemetry import telemetry_run
@@ -120,6 +121,15 @@ def summaries(
 ) -> SummariesResponse:
     items = DATABASE.list_summaries(user_id, visible_only=visible_only, limit=limit)
     return SummariesResponse(user_id=user_id, count=len(items), items=items)
+
+
+@app.get("/api/rejected", response_model=RejectedEmailsResponse)
+def rejected_emails(
+    user_id: str = Depends(current_user),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> RejectedEmailsResponse:
+    items = DATABASE.rejected_emails(user_id, limit=limit)
+    return RejectedEmailsResponse(user_id=user_id, count=len(items), items=items)
 
 
 @app.post("/api/chat", response_model=ChatResponse)

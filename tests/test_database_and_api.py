@@ -24,6 +24,10 @@ def sample_guardrail() -> GuardrailResult:
     return GuardrailResult(is_valid=True, reason="official", confidence=0.9)
 
 
+def rejected_guardrail(reason: str = "not an official announcement") -> GuardrailResult:
+    return GuardrailResult(is_valid=False, reason=reason, confidence=0.8)
+
+
 def sample_summary(category: str = "academic", urgency_score: int = 4) -> TriageSummary:
     return TriageSummary(
         title="Enrollment",
@@ -133,6 +137,42 @@ def test_ingest_endpoint_supports_mock_limit_and_offset(monkeypatch, tmp_path):
     assert payload["accepted"][0]["email"]["id"] == "email-1"
     assert db.get_email("tenant-a", "email-0") is None
     assert db.get_email("tenant-a", "email-1") is not None
+
+
+def test_rejected_endpoint_lists_only_current_tenant_rejections(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    monkeypatch.setattr(main, "DATABASE", db)
+    db.save_ingested(
+        "tenant-a",
+        IngestedEmail(
+            email=sample_email("accepted-a", subject="HDA: Accepted"),
+            guardrail=sample_guardrail(),
+        ),
+    )
+    db.save_ingested(
+        "tenant-a",
+        IngestedEmail(
+            email=sample_email("rejected-a", subject="Canvas Grade Posted"),
+            guardrail=rejected_guardrail("personal course notification"),
+        ),
+    )
+    db.save_ingested(
+        "tenant-b",
+        IngestedEmail(
+            email=sample_email("rejected-b", subject="Other Tenant Rejection"),
+            guardrail=rejected_guardrail("wrong tenant"),
+        ),
+    )
+
+    client = TestClient(main.app)
+    response = client.get("/api/rejected", headers={"X-User-ID": "tenant-a"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["user_id"] == "tenant-a"
+    assert payload["count"] == 1
+    assert payload["items"][0]["email"]["id"] == "rejected-a"
+    assert payload["items"][0]["guardrail"]["reason"] == "personal course notification"
 
 
 def install_fast_process_stub(monkeypatch, db: SwiftMemoDB) -> None:

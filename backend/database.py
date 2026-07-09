@@ -186,6 +186,23 @@ class SwiftMemoDB:
         )
         return [_row_to_email(row) for row in rows]
 
+    def rejected_emails(
+        self,
+        user_id: str,
+        limit: int | None = None,
+    ) -> list[IngestedEmail]:
+        sql = """
+            SELECT * FROM emails
+            WHERE user_id = ? AND guardrail_valid = 0
+            ORDER BY created_at DESC, email_date DESC, email_id ASC
+        """
+        params: tuple[Any, ...] = (user_id,)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (user_id, limit)
+        rows = self._fetchall(sql, params)
+        return [_row_to_ingested(row) for row in rows]
+
     def save_triage(
         self,
         user_id: str,
@@ -434,6 +451,17 @@ def _row_to_email(row: sqlite3.Row) -> EmailRecord:
         subject=row["subject"],
         date=row["email_date"],
         body=row["body"],
+    )
+
+
+def _row_to_ingested(row: sqlite3.Row) -> IngestedEmail:
+    return IngestedEmail(
+        email=_row_to_email(row),
+        guardrail=GuardrailResult(
+            is_valid=bool(row["guardrail_valid"]),
+            reason=row["guardrail_reason"],
+            confidence=row["guardrail_confidence"],
+        ),
     )
 
 

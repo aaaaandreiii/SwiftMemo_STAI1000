@@ -16,10 +16,18 @@ interface HeaderProps {
   onTenantChange: (t: Tenant) => void;
   query: string;
   onQueryChange: (q: string) => void;
+  onSettingsOpen: () => void;
   online: boolean;
 }
 
-export function Header({ tenant, onTenantChange, query, onQueryChange, online }: HeaderProps) {
+export function Header({
+  tenant,
+  onTenantChange,
+  query,
+  onQueryChange,
+  onSettingsOpen,
+  online,
+}: HeaderProps) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -101,7 +109,11 @@ export function Header({ tenant, onTenantChange, query, onQueryChange, online }:
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <button className="grid h-9 w-9 place-items-center rounded-full border border-border bg-secondary/40 text-muted-foreground transition-colors hover:text-foreground">
+      <button
+        onClick={onSettingsOpen}
+        className="grid h-9 w-9 place-items-center rounded-full border border-border bg-secondary/40 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10b981]/40"
+        title="Open settings"
+      >
         <Settings className="h-[18px] w-[18px]" />
       </button>
     </header>
