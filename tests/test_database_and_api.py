@@ -192,6 +192,7 @@ def test_demo_reset_clears_tenant_archive_but_keeps_profile_preferences(monkeypa
         user_id,
         role="Student",
         affiliation="CCS",
+        campus="Manila",
         interests=["Canvas"],
         deadlines=["Enrollment"],
         schedules=[],
@@ -398,6 +399,52 @@ def test_personal_email_heuristic_summary():
     assert summary.category == "other"
 
 
+def test_lspo_daily_masses_are_not_urgent_administrative_deadlines():
+    email = EmailRecord(
+        id="lspo-mass",
+        sender="announcement@dlsu.edu.ph",
+        subject="[LSPO] Daily Masses on Campus",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body=(
+            "The Lasallian Pastoral Office announces the daily Masses on campus. "
+            "Masses will be held on July 12, 2026 at the Chapel. "
+            "The schedule is for the DLSU community."
+        ),
+    )
+
+    summary = agents.heuristic_extract_summary(email)
+
+    assert summary.category in {"events", "other"}
+    assert summary.deadline_date is None
+    assert summary.urgency_score == 2
+
+
+@pytest.mark.parametrize(
+    ("subject", "expected_deadline"),
+    [
+        ("Juan dela Cruz just sent you a message in Canvas", None),
+        ("New event: STAI100 Midterm Consultation", date(2026, 7, 12)),
+        ("Assignment Graded: VPC Hands on Lab 5.3", None),
+    ],
+)
+def test_canvas_notifications_classify_as_canvas_tasks(subject, expected_deadline):
+    email = EmailRecord(
+        id=f"canvas-{subject[:8]}",
+        sender="notifications@instructure.com",
+        subject=subject,
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body=(
+            "Canvas notification for STAI100. "
+            "The related calendar date is July 12, 2026."
+        ),
+    )
+
+    summary = agents.heuristic_extract_summary(email)
+
+    assert summary.category == "canvas_tasks"
+    assert summary.deadline_date == expected_deadline
+
+
 def test_topic_suggestion_generation_from_repeated_noninstitutional_emails(tmp_path):
     db = SwiftMemoDB(tmp_path / "swiftmemo.db")
     user_id = "tenant-a"
@@ -514,3 +561,197 @@ def test_daily_digest_results_for_selected_date(tmp_path):
         "personal-update",
         "deadline-update",
     }
+
+
+def test_profile_match_ranks_above_unrelated_urgent_thesis_email(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    digest_day = date(2026, 7, 11)
+    db.set_profile(
+        user_id,
+        role="Student",
+        affiliation="CCS College of Computer Studies",
+        campus="",
+        interests=[],
+        deadlines=[],
+        schedules=[],
+        freeform_context="",
+    )
+    ccs_email = sample_email(
+        "ccs-thesis",
+        subject="CCS Thesis Proposal Defense Submission",
+    )
+    dac_email = sample_email(
+        "dac-thesis",
+        subject="[DAC] MSA Thesis Final Defense - Mr. Dominic Narag",
+    )
+    db.save_ingested(user_id, IngestedEmail(email=ccs_email, guardrail=sample_guardrail()))
+    db.save_ingested(user_id, IngestedEmail(email=dac_email, guardrail=sample_guardrail()))
+    db.save_triage(
+        user_id,
+        ccs_email.id,
+        TriageSummary(
+            title="CCS Thesis Proposal Defense Submission",
+            summary="CCS students must submit thesis proposal defense requirements.",
+            deadline_date=digest_day,
+            category="academic",
+            urgency_score=4,
+        ),
+        True,
+    )
+    db.save_triage(
+        user_id,
+        dac_email.id,
+        TriageSummary(
+            title="DAC MSA Thesis Final Defense",
+            summary="A DAC MSA final defense announcement is scheduled.",
+            deadline_date=digest_day,
+            category="academic",
+            urgency_score=5,
+        ),
+        True,
+    )
+
+    summaries = db.list_summaries(user_id, visible_only=True)
+    digest = db.daily_digest(user_id, digest_day)
+
+    assert [item["email_id"] for item in summaries][:2] == ["ccs-thesis", "dac-thesis"]
+    assert [item["email_id"] for item in digest["recommended_for_you"]] == ["ccs-thesis"]
+    assert [item["email_id"] for item in digest["urgent_unmatched"]] == ["dac-thesis"]
+    assert digest["recommended_for_you"][0]["relevance_score"] >= 18
+    assert "Affiliation: ccs" in digest["recommended_for_you"][0]["relevance_reasons"]
+
+
+@pytest.mark.parametrize(
+    ("profile_affiliation", "subject"),
+    [
+        ("RVRCOB", "Ramon V. del Rosario College of Business enrollment briefing"),
+        ("GCOE", "Gokongwei College of Engineering research colloquium"),
+        ("CCS", "College of Computer Studies thesis submission"),
+        ("COS", "College of Science undergraduate research forum"),
+        ("CLA", "College of Liberal Arts advising reminder"),
+        ("BAGCED", "Br. Andrew Gonzalez FSC College of Education seminar"),
+        ("SOL", "Tanada-Diokno School of Law application announcement"),
+        ("SOE", "School of Economics undergraduate conference"),
+        ("School of Innovation and Sustainability (Laguna)", "SIS Laguna student briefing"),
+    ],
+)
+def test_profile_context_maps_dlsu_college_aliases(
+    tmp_path,
+    profile_affiliation,
+    subject,
+):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    db.set_profile(
+        user_id,
+        role="Student",
+        affiliation=profile_affiliation,
+        campus="",
+        interests=[],
+        deadlines=[],
+        schedules=[],
+        freeform_context="",
+    )
+    email = sample_email("college-match", subject=subject)
+    db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+    db.save_triage(
+        user_id,
+        email.id,
+        TriageSummary(
+            title=subject,
+            summary=f"{subject} is open to members of the target college or school.",
+            deadline_date=None,
+            category="academic",
+            urgency_score=2,
+        ),
+        True,
+    )
+
+    item = db.list_summaries(user_id, visible_only=True)[0]
+
+    assert item["email_id"] == "college-match"
+    assert item["relevance_score"] >= 18
+    assert item["relevance_reasons"]
+
+
+def test_campus_profile_boosts_manila_and_demotes_laguna(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    db.set_profile(
+        user_id,
+        role="Student",
+        affiliation="",
+        campus="Taft",
+        interests=[],
+        deadlines=[],
+        schedules=[],
+        freeform_context="",
+    )
+    manila = EmailRecord(
+        id="manila-event",
+        sender="office@dlsu.edu.ph",
+        subject="Town hall at DLSU Manila Campus",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body="The activity will be held at Henry Sy Sr. Hall, Taft.",
+    )
+    neutral = EmailRecord(
+        id="neutral-event",
+        sender="office@dlsu.edu.ph",
+        subject="Online thesis briefing",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body="The briefing will be held online.",
+    )
+    laguna = EmailRecord(
+        id="laguna-event",
+        sender="office@dlsu.edu.ph",
+        subject="Laguna Campus lab orientation",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body="The activity is only at DLSU Laguna Campus.",
+    )
+    for email in (laguna, neutral, manila):
+        db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+        db.save_triage(
+            user_id,
+            email.id,
+            TriageSummary(
+                title=email.subject,
+                summary=email.body,
+                deadline_date=None,
+                category="academic",
+                urgency_score=3,
+            ),
+            True,
+        )
+
+    summaries = db.list_summaries(user_id, visible_only=True)
+
+    assert [item["email_id"] for item in summaries] == [
+        "manila-event",
+        "neutral-event",
+        "laguna-event",
+    ]
+    assert summaries[0]["campus_match"] == "match"
+    assert summaries[-1]["campus_match"] == "mismatch"
+
+
+def test_new_preferences_default_and_control_feed_visibility(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    preferences = db.get_preferences(user_id)
+
+    assert preferences["canvas_tasks"] is True
+    assert preferences["webinars_seminars_workshops"] is False
+    assert preferences["exchange_programs"] is True
+    assert preferences["library"] is True
+
+    email = sample_email("canvas-pref", subject="Assignment Graded: Lab")
+    db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+    db.set_preferences(user_id, {"canvas_tasks": False})
+    summary = sample_summary(category="canvas_tasks", urgency_score=2)
+    db.save_triage(user_id, email.id, summary, db.category_enabled(user_id, summary.category))
+
+    assert db.list_summaries(user_id, visible_only=True) == []
+    archived = db.list_summaries(user_id, visible_only=False)
+    assert archived[0]["category"] == "canvas_tasks"
+    assert archived[0]["visible_in_feed"] is False

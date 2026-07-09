@@ -10,6 +10,10 @@ CATEGORIES = (
     "campus_access",
     "health_safety",
     "events",
+    "canvas_tasks",
+    "webinars_seminars_workshops",
+    "exchange_programs",
+    "library",
     "it_services",
     "administrative",
     "other",
@@ -21,10 +25,16 @@ Category = Literal[
     "campus_access",
     "health_safety",
     "events",
+    "canvas_tasks",
+    "webinars_seminars_workshops",
+    "exchange_programs",
+    "library",
     "it_services",
     "administrative",
     "other",
 ]
+
+CampusMatch = Literal["match", "mismatch", "neutral"]
 
 
 class EmailRecord(BaseModel):
@@ -145,6 +155,9 @@ class SummaryItem(BaseModel):
     deadline_date: date | None = None
     category: Category
     urgency_score: int = Field(ge=1, le=5)
+    relevance_score: float = 0.0
+    relevance_reasons: list[str] = Field(default_factory=list)
+    campus_match: CampusMatch = "neutral"
     visible_in_feed: bool
     created_at: datetime
 
@@ -159,6 +172,7 @@ class TenantProfile(BaseModel):
     user_id: str
     role: str = ""
     affiliation: str = ""
+    campus: str = ""
     interests: list[str] = Field(default_factory=list)
     deadlines: list[str] = Field(default_factory=list)
     schedules: list[str] = Field(default_factory=list)
@@ -169,6 +183,7 @@ class TenantProfile(BaseModel):
 class TenantProfileUpdateRequest(BaseModel):
     role: str = Field(default="", max_length=200)
     affiliation: str = Field(default="", max_length=200)
+    campus: str = Field(default="", max_length=80)
     interests: list[str] = Field(default_factory=list, max_length=50)
     deadlines: list[str] = Field(default_factory=list, max_length=50)
     schedules: list[str] = Field(default_factory=list, max_length=50)
@@ -207,6 +222,9 @@ class DailyDigestItem(BaseModel):
     deadline_date: date | None = None
     category: Category
     urgency_score: int = Field(ge=1, le=5)
+    relevance_score: float = 0.0
+    relevance_reasons: list[str] = Field(default_factory=list)
+    campus_match: CampusMatch = "neutral"
     visible_in_feed: bool
     email_kind: str = "other"
     is_institutional: bool = False
@@ -215,6 +233,8 @@ class DailyDigestItem(BaseModel):
 class DailyDigestResponse(BaseModel):
     user_id: str
     digest_date: date
+    recommended_for_you: list[DailyDigestItem] = Field(default_factory=list)
+    urgent_unmatched: list[DailyDigestItem] = Field(default_factory=list)
     important_emails: list[DailyDigestItem]
     deadlines: list[DailyDigestItem]
     personal_service_updates: list[DailyDigestItem]

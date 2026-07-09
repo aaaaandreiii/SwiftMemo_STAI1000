@@ -48,7 +48,7 @@ Extract the email update into this exact JSON schema:
   "title": "short title",
   "summary": "1-2 sentence action-focused summary",
   "deadline_date": "YYYY-MM-DD or null",
-  "category": "academic | finance | campus_access | health_safety | events | it_services | administrative | other",
+  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | it_services | administrative | other",
   "urgency_score": 1
 }
 
@@ -68,7 +68,7 @@ REPAIR_PROMPT = """Convert the extraction into valid JSON for this exact schema:
   "title": "short title",
   "summary": "1-2 sentence action-focused summary",
   "deadline_date": "YYYY-MM-DD or null",
-  "category": "academic | finance | campus_access | health_safety | events | it_services | administrative | other",
+  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | it_services | administrative | other",
   "urgency_score": 1
 }
 
@@ -330,39 +330,149 @@ def resolve_relative_date(phrase: str, base_date: date | None = None) -> date | 
 
 
 def _extract_deadline(email: EmailRecord) -> date | None:
-    absolute_dates = []
+    text = f"{email.subject}\n{email.body}"
+    lowered = text.lower()
+    absolute_dates: list[tuple[date, int, int]] = []
     for match in re.finditer(
         r"\b(January|February|March|April|May|June|July|August|September|October|November|December)"
         r"\s+\d{1,2},\s+\d{4}\b",
-        email.body,
+        text,
         flags=re.IGNORECASE,
     ):
         try:
-            absolute_dates.append(datetime.strptime(match.group(0), "%B %d, %Y").date())
+            absolute_dates.append(
+                (datetime.strptime(match.group(0), "%B %d, %Y").date(), match.start(), match.end())
+            )
         except ValueError:
             continue
-    if absolute_dates:
-        return absolute_dates[-1]
 
-    relative = resolve_relative_date(email.body, email.date.date())
-    return relative
+    if absolute_dates:
+        if _is_canvas_event_notification(email):
+            return absolute_dates[0][0]
+        for parsed_date, start, end in absolute_dates:
+            window = lowered[max(0, start - 90) : min(len(lowered), end + 90)]
+            if _has_deadline_cue(window):
+                return parsed_date
+
+    for match in re.finditer(
+        r"\b(day after tomorrow|tomorrow|today|in\s+\d+\s+days?|next\s+\w+|this\s+\w+|by\s+\w+)\b",
+        lowered,
+    ):
+        window = lowered[max(0, match.start() - 80) : min(len(lowered), match.end() + 80)]
+        if _has_deadline_cue(window):
+            relative = resolve_relative_date(match.group(0), email.date.date())
+            if relative:
+                return relative
+    return None
 
 
 def _classify_category(email: EmailRecord):
     text = f"{email.subject} {email.body}".lower()
+    sender = email.sender.lower()
+    if _is_canvas_task_notification(email):
+        return "canvas_tasks"
+    if any(term in text for term in ("daily mass", "daily masses", "masses on campus")):
+        return "events"
+    if any(
+        term in text
+        for term in (
+            "exchange student program",
+            "student exchange",
+            "exchange program",
+            "international exchange",
+            "study abroad",
+        )
+    ):
+        return "exchange_programs"
+    if "library@" in sender or any(
+        term in text
+        for term in (
+            "dlsu libraries",
+            "dlsu library",
+            "american corner",
+            "learning commons",
+            "libraries",
+        )
+    ):
+        return "library"
+    if any(term in text for term in ("webinar", "seminar", "workshop", "learning session")):
+        return "webinars_seminars_workshops"
     keyword_map = {
-        "academic": ("enrollment", "thesis", "course", "graded", "classes", "defense", "canvas"),
+        "academic": ("enrollment", "thesis", "course", "classes", "defense", "submission"),
         "finance": ("tuition", "payment", "accounting", "installment", "balance", "invoice", "receipt"),
         "campus_access": ("gate", "access", "guest", "campus safety"),
         "health_safety": ("health", "flu", "symptoms", "mask", "illness"),
-        "events": ("student organization", "activities", "event", "renewal", "webinar", "workshop"),
+        "events": (
+            "student organization",
+            "student org",
+            "activities",
+            "event",
+            "renewal",
+            "general assembly",
+            "call for volunteers",
+            "mass on campus",
+        ),
         "it_services": ("animospace", "maintenance", "it services", "online", "password", "security alert"),
-        "administrative": ("registrar", "office", "procedure", "requirements", "confirmation"),
+        "administrative": ("registrar", "procedure", "requirements", "confirmation", "clearance"),
     }
     for category, keywords in keyword_map.items():
         if any(keyword in text for keyword in keywords):
             return category
     return "other"
+
+
+def _is_canvas_task_notification(email: EmailRecord) -> bool:
+    sender = email.sender.lower()
+    subject = email.subject.lower()
+    text = f"{email.subject}\n{email.body}".lower()
+    if "notifications@instructure.com" in sender or "instructure.com" in sender:
+        return True
+    if any(
+        phrase in subject
+        for phrase in (
+            "just sent you a message in canvas",
+            "new event:",
+            "assignment graded:",
+            "submission comment",
+            "course notification",
+        )
+    ):
+        return True
+    return "canvas" in text and any(
+        term in text
+        for term in (
+            "assignment",
+            "graded",
+            "course",
+            "message",
+            "event",
+            "submission",
+        )
+    )
+
+
+def _is_canvas_event_notification(email: EmailRecord) -> bool:
+    return _is_canvas_task_notification(email) and email.subject.lower().startswith("new event:")
+
+
+def _has_deadline_cue(text: str) -> bool:
+    return any(
+        re.search(pattern, text)
+        for pattern in (
+            r"\bdeadline\b",
+            r"\bdue\b",
+            r"\bnot later than\b",
+            r"\bno later than\b",
+            r"\bby\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|\d{1,2})\b",
+            r"\buntil\b",
+            r"\bsubmit(?:ted|s|ting)?\b",
+            r"\bsubmission\b",
+            r"\bcomplete\b",
+            r"\baccomplish\b",
+            r"\bsettlement\b",
+            r"\bpayment\b",
+        )
+    )
 
 
 def _urgency_score(deadline: date | None, base_date: date) -> int:

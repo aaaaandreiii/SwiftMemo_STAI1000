@@ -20,6 +20,29 @@ def test_instructure_assignment_grade_notification_is_accepted_and_classified():
     assert result.is_institutional is False
 
 
+def test_canvas_message_and_event_notifications_are_accepted_by_heuristic():
+    subjects = [
+        "Maria Santos just sent you a message in Canvas",
+        "New event: STAI100 Midterm Consultation",
+        "Assignment Graded: Lab 4",
+    ]
+
+    for index, subject in enumerate(subjects):
+        email = EmailRecord(
+            id=f"canvas-pattern-{index}",
+            sender="notifications@instructure.com",
+            subject=subject,
+            date=datetime.fromisoformat("2026-07-06T23:37:00+08:00"),
+            body="Canvas course notification.",
+        )
+
+        result = heuristic_validate_announcement(email)
+
+        assert result.is_valid is True
+        assert result.email_kind == "lms_notification"
+        assert result.is_institutional is False
+
+
 def test_display_name_dlsu_help_desk_sender_is_accepted_by_heuristic():
     email = EmailRecord(
         id="real-hda-2026-001",

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   CalendarPlus,
   CheckCircle2,
+  AlertTriangle,
   MessageSquareReply,
   Volume2,
   Tags,
@@ -78,7 +79,10 @@ export function AnnouncementCard({
   const MetaIcon = meta.icon;
   const cd = countdownLabel(a.dueDate);
   const high = a.urgency >= 4;
-  const showSchoolworkAutomation = a.category === "Academic" && Boolean(a.dueDate);
+  const recommended = a.campusMatch === "match" || a.relevanceScore >= 18;
+  const urgentUnmatched = high && !recommended;
+  const showSchoolworkAutomation =
+    a.category === "Canvas Tasks" || (a.category === "Academic" && Boolean(a.dueDate));
 
   return (
     <motion.article
@@ -152,6 +156,29 @@ export function AnnouncementCard({
               #{topic.label}
             </span>
           ))}
+        </div>
+      )}
+
+      {(recommended || urgentUnmatched || a.campusMatch === "mismatch") && (
+        <div className="relative mt-2 flex flex-wrap gap-1.5">
+          {recommended && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#10b981]/35 bg-[#10b981]/10 px-2 py-0.5 text-[0.68rem] text-[#6ee7b7]">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {a.relevanceReasons[0] ?? "Recommended"}
+            </span>
+          )}
+          {urgentUnmatched && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#fbbf24]/35 bg-[#fbbf24]/10 px-2 py-0.5 text-[0.68rem] text-[#fde68a]">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Urgent but not matched
+            </span>
+          )}
+          {a.campusMatch === "mismatch" && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#f43f5e]/35 bg-[#f43f5e]/10 px-2 py-0.5 text-[0.68rem] text-[#fda4af]">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Campus mismatch
+            </span>
+          )}
         </div>
       )}
 

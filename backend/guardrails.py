@@ -110,10 +110,13 @@ def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
         phrase in text
         for phrase in (
             "assignment graded",
+            "assignment graded:",
             "has been graded",
             "graded:",
-            "submission comment",
+            "just sent you a message in canvas",
+            "new event:",
             "course notification",
+            "submission comment",
         )
     ):
         return GuardrailResult(

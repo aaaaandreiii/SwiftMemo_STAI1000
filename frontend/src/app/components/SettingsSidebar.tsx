@@ -7,6 +7,7 @@ import {
   ListChecks,
   Loader2,
   Mail,
+  MapPin,
   RefreshCw,
   Save,
   ShieldAlert,
@@ -44,6 +45,7 @@ const formatDate = (value: string) =>
 interface ProfileDraft {
   role: string;
   affiliation: string;
+  campus: string;
   interests: string;
   deadlines: string;
   schedules: string;
@@ -53,6 +55,7 @@ interface ProfileDraft {
 const profileToDraft = (profile: TenantProfile | null): ProfileDraft => ({
   role: profile?.role ?? "",
   affiliation: profile?.affiliation ?? "",
+  campus: profile?.campus ?? "",
   interests: (profile?.interests ?? []).join("\n"),
   deadlines: (profile?.deadlines ?? []).join("\n"),
   schedules: (profile?.schedules ?? []).join("\n"),
@@ -134,6 +137,7 @@ export function SettingsSidebar({
     onSaveProfile({
       role: profileDraft.role.trim(),
       affiliation: profileDraft.affiliation.trim(),
+      campus: profileDraft.campus.trim(),
       interests: splitList(profileDraft.interests),
       deadlines: splitList(profileDraft.deadlines),
       schedules: splitList(profileDraft.schedules),
@@ -339,6 +343,24 @@ export function SettingsSidebar({
                     }))
                   }
                   placeholder="College, team, org, or office"
+                  className="h-9 w-full rounded-lg border border-border bg-input/60 px-2.5 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
+                />
+              </label>
+
+              <label className="block text-xs text-muted-foreground">
+                <span className="mb-1 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  DLSU Campus:
+                </span>
+                <input
+                  value={profileDraft.campus}
+                  onChange={(event) =>
+                    setProfileDraft((current) => ({
+                      ...current,
+                      campus: event.target.value,
+                    }))
+                  }
+                  placeholder="Manila, Laguna, Both"
                   className="h-9 w-full rounded-lg border border-border bg-input/60 px-2.5 text-xs text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
                 />
               </label>

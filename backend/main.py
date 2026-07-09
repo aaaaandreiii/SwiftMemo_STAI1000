@@ -163,6 +163,7 @@ def put_profile(
         user_id,
         role=request.role,
         affiliation=request.affiliation,
+        campus=request.campus,
         interests=request.interests,
         deadlines=request.deadlines,
         schedules=request.schedules,

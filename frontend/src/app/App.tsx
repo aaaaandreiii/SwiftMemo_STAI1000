@@ -72,6 +72,18 @@ const todayIso = () => today().toISOString().slice(0, 10);
 const sortDate = (value: string | null) =>
   value ? new Date(value + "T00:00:00").getTime() : Number.MAX_SAFE_INTEGER;
 
+const relevanceTier = (item: Announcement) => {
+  if (item.campusMatch === "mismatch") return -1;
+  if (item.campusMatch === "match" || item.relevanceScore >= 18) return 1;
+  return 0;
+};
+
+const sortAnnouncements = (a: Announcement, b: Announcement) =>
+  relevanceTier(b) - relevanceTier(a) ||
+  b.urgency - a.urgency ||
+  sortDate(a.dueDate) - sortDate(b.dueDate) ||
+  b.relevanceScore - a.relevanceScore;
+
 const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "Unexpected error";
 
@@ -241,7 +253,14 @@ export default function App() {
         const topicLabels = matchedCustomTopics(a, customTopics)
           .map((topic) => topic.label)
           .join(" ");
-        return (a.title + a.summary + a.category + a.sourceSubject + topicLabels)
+        return (
+          a.title +
+          a.summary +
+          a.category +
+          a.sourceSubject +
+          a.relevanceReasons.join(" ") +
+          topicLabels
+        )
           .toLowerCase()
           .includes(term);
       });
@@ -266,7 +285,7 @@ export default function App() {
       .filter((a) => !hidden.includes(a.id))
       .filter((a) => prefs[a.category])
       .filter((a) => !matchedCustomTopics(a, customTopics).some((topic) => !topic.enabled))
-      .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
+      .sort(sortAnnouncements);
   }, [scopedItems, hidden, prefs, customTopics]);
 
   const filteredOutItems = useMemo(() => {
@@ -277,7 +296,7 @@ export default function App() {
           !prefs[a.category] ||
           matchedCustomTopics(a, customTopics).some((topic) => !topic.enabled),
       )
-      .sort((a, b) => b.urgency - a.urgency || sortDate(a.dueDate) - sortDate(b.dueDate));
+      .sort(sortAnnouncements);
   }, [scopedItems, hidden, prefs, customTopics]);
 
   const criticalItems = useMemo(
@@ -519,6 +538,10 @@ export default function App() {
     try {
       const updated = await updateProfile(tenant.id, payload);
       setProfile(updated);
+      await Promise.all([
+        refreshSummaries(tenant.id),
+        refreshDailyDigest(tenant.id, selectedDay ?? todayIso()),
+      ]);
       toast.success("Profile context saved");
     } catch (error) {
       toast.error("Profile save failed", { description: errorMessage(error) });

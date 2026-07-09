@@ -4,6 +4,10 @@ import {
   ShieldCheck,
   HeartPulse,
   CalendarDays,
+  ClipboardList,
+  Presentation,
+  Globe2,
+  Library,
   Cpu,
   Building2,
   CircleHelp,
@@ -17,6 +21,10 @@ export type CategoryKey =
   | "Campus Access"
   | "Health & Safety"
   | "Events"
+  | "Canvas Tasks"
+  | "Webinars, Seminars, Workshops"
+  | "Exchange Student Programs"
+  | "Library"
   | "IT Services"
   | "Administrative"
   | "Other";
@@ -34,6 +42,20 @@ export const CATEGORIES: Category[] = [
   { key: "Campus Access", backendKey: "campus_access", icon: ShieldCheck, color: "#38bdf8" },
   { key: "Health & Safety", backendKey: "health_safety", icon: HeartPulse, color: "#f43f5e" },
   { key: "Events", backendKey: "events", icon: CalendarDays, color: "#a78bfa" },
+  { key: "Canvas Tasks", backendKey: "canvas_tasks", icon: ClipboardList, color: "#22c55e" },
+  {
+    key: "Webinars, Seminars, Workshops",
+    backendKey: "webinars_seminars_workshops",
+    icon: Presentation,
+    color: "#fb7185",
+  },
+  {
+    key: "Exchange Student Programs",
+    backendKey: "exchange_programs",
+    icon: Globe2,
+    color: "#60a5fa",
+  },
+  { key: "Library", backendKey: "library", icon: Library, color: "#f59e0b" },
   { key: "IT Services", backendKey: "it_services", icon: Cpu, color: "#22d3ee" },
   { key: "Administrative", backendKey: "administrative", icon: Building2, color: "#94a3b8" },
   { key: "Other", backendKey: "other", icon: CircleHelp, color: "#cbd5e1" },
@@ -116,6 +138,9 @@ export interface Announcement {
   sender: string;
   sourceSubject: string;
   visibleInFeed: boolean;
+  relevanceScore: number;
+  relevanceReasons: string[];
+  campusMatch: "match" | "mismatch" | "neutral";
 }
 
 export interface CustomTopic {
@@ -142,6 +167,9 @@ export function summaryToAnnouncement(item: SummaryItem): Announcement {
     sender: item.sender,
     sourceSubject: item.source_subject,
     visibleInFeed: item.visible_in_feed,
+    relevanceScore: item.relevance_score,
+    relevanceReasons: item.relevance_reasons,
+    campusMatch: item.campus_match,
   };
 }
 
@@ -199,7 +227,8 @@ function summaryBullets(item: SummaryItem): string[] {
     .slice(0, 2);
   const deadline = item.deadline_date ? `Deadline: ${item.deadline_date}` : null;
   const category = `Category: ${categoryByBackend(item.category).key}`;
-  return [...sentences, deadline, category].filter(Boolean) as string[];
+  const relevance = item.relevance_reasons[0] ? `Recommended: ${item.relevance_reasons[0]}` : null;
+  return [...sentences, deadline, relevance, category].filter(Boolean) as string[];
 }
 
 function normalizeTopicText(value: string): string {

@@ -229,13 +229,13 @@ export function Sidebar({
                   <Icon className="h-4 w-4" />
                 </span>
                 <span
-                  className={`flex-1 text-left text-sm transition-colors ${
+                  className={`min-w-0 flex-1 text-left text-sm leading-tight transition-colors ${
                     on ? "text-foreground" : "text-muted-foreground"
                   }`}
                 >
                   {c.key}
                 </span>
-                <span className="font-mono text-[0.7rem] text-muted-foreground">
+                <span className="shrink-0 font-mono text-[0.7rem] text-muted-foreground">
                   {counts[c.key] ?? 0}
                 </span>
                 {/* switch */}

@@ -4,6 +4,10 @@ export const BACKEND_CATEGORIES = [
   "campus_access",
   "health_safety",
   "events",
+  "canvas_tasks",
+  "webinars_seminars_workshops",
+  "exchange_programs",
+  "library",
   "it_services",
   "administrative",
   "other",
@@ -66,6 +70,7 @@ export interface TenantProfile {
   user_id: string;
   role: string;
   affiliation: string;
+  campus: string;
   interests: string[];
   deadlines: string[];
   schedules: string[];
@@ -105,6 +110,9 @@ export interface DailyDigestItem {
   deadline_date: string | null;
   category: BackendCategory;
   urgency_score: 1 | 2 | 3 | 4 | 5;
+  relevance_score: number;
+  relevance_reasons: string[];
+  campus_match: "match" | "mismatch" | "neutral";
   visible_in_feed: boolean;
   email_kind: string;
   is_institutional: boolean;
@@ -113,6 +121,8 @@ export interface DailyDigestItem {
 export interface DailyDigestResponse {
   user_id: string;
   digest_date: string;
+  recommended_for_you: DailyDigestItem[];
+  urgent_unmatched: DailyDigestItem[];
   important_emails: DailyDigestItem[];
   deadlines: DailyDigestItem[];
   personal_service_updates: DailyDigestItem[];
@@ -142,6 +152,9 @@ export interface SummaryItem {
   deadline_date: string | null;
   category: BackendCategory;
   urgency_score: 1 | 2 | 3 | 4 | 5;
+  relevance_score: number;
+  relevance_reasons: string[];
+  campus_match: "match" | "mismatch" | "neutral";
   visible_in_feed: boolean;
   created_at: string;
 }

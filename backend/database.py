@@ -1,6 +1,7 @@
 import json
 import re
 import sqlite3
+import unicodedata
 import uuid
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
@@ -108,6 +109,7 @@ class SwiftMemoDB:
                     user_id TEXT PRIMARY KEY,
                     role TEXT NOT NULL,
                     affiliation TEXT NOT NULL,
+                    campus TEXT NOT NULL DEFAULT '',
                     interests_json TEXT NOT NULL,
                     deadlines_json TEXT NOT NULL,
                     schedules_json TEXT NOT NULL,
@@ -143,6 +145,14 @@ class SwiftMemoDB:
         if "email_kind" not in email_columns:
             self._conn.execute(
                 "ALTER TABLE emails ADD COLUMN email_kind TEXT NOT NULL DEFAULT 'other'"
+            )
+        profile_columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(user_profiles)").fetchall()
+        }
+        if "campus" not in profile_columns:
+            self._conn.execute(
+                "ALTER TABLE user_profiles ADD COLUMN campus TEXT NOT NULL DEFAULT ''"
             )
 
     def close(self) -> None:
@@ -329,11 +339,11 @@ class SwiftMemoDB:
         params: list[Any] = [user_id]
         if visible_only:
             sql += " AND ts.visible_in_feed = 1"
-        sql += " ORDER BY COALESCE(ts.deadline_date, e.email_date) ASC, ts.created_at ASC"
-        if limit is not None:
-            sql += " LIMIT ?"
-            params.append(limit)
-        return [_row_to_summary_item(row) for row in self._fetchall(sql, tuple(params))]
+        rows = self._fetchall(sql, tuple(params))
+        profile = self.get_profile(user_id)
+        items = [_with_relevance(_row_to_summary_item(row), profile) for row in rows]
+        ranked = _rank_digest_items(items)
+        return ranked[:limit] if limit is not None else ranked
 
     def get_profile(self, user_id: str) -> dict[str, Any]:
         row = self._fetchone(
@@ -345,6 +355,7 @@ class SwiftMemoDB:
                 "user_id": user_id,
                 "role": "",
                 "affiliation": "",
+                "campus": "",
                 "interests": [],
                 "deadlines": [],
                 "schedules": [],
@@ -359,6 +370,7 @@ class SwiftMemoDB:
         *,
         role: str,
         affiliation: str,
+        campus: str,
         interests: list[str],
         deadlines: list[str],
         schedules: list[str],
@@ -372,13 +384,14 @@ class SwiftMemoDB:
             self._conn.execute(
                 """
                 INSERT INTO user_profiles (
-                    user_id, role, affiliation, interests_json, deadlines_json,
+                    user_id, role, affiliation, campus, interests_json, deadlines_json,
                     schedules_json, freeform_context, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     role = excluded.role,
                     affiliation = excluded.affiliation,
+                    campus = excluded.campus,
                     interests_json = excluded.interests_json,
                     deadlines_json = excluded.deadlines_json,
                     schedules_json = excluded.schedules_json,
@@ -389,6 +402,7 @@ class SwiftMemoDB:
                     user_id,
                     role.strip(),
                     affiliation.strip(),
+                    campus.strip(),
                     json.dumps(cleaned_interests),
                     json.dumps(cleaned_deadlines),
                     json.dumps(cleaned_schedules),
@@ -408,6 +422,7 @@ class SwiftMemoDB:
             user_id,
             role=profile["role"],
             affiliation=profile["affiliation"],
+            campus=profile["campus"],
             interests=interests,
             deadlines=profile["deadlines"],
             schedules=profile["schedules"],
@@ -520,6 +535,17 @@ class SwiftMemoDB:
         items = self._digest_items(user_id)
         today_items = [item for item in items if str(item["email_date"])[:10] == target]
         deadlines = [item for item in items if item["deadline_date"] == target]
+        digest_scope = _unique_digest_items(today_items + deadlines)
+        recommended = _rank_digest_items(
+            [item for item in digest_scope if _is_recommended_for_profile(item)]
+        )
+        urgent_unmatched = _rank_digest_items(
+            [
+                item
+                for item in digest_scope
+                if item["urgency_score"] >= 4 and not _is_recommended_for_profile(item)
+            ]
+        )
         important = _unique_digest_items(
             [
                 item
@@ -527,17 +553,22 @@ class SwiftMemoDB:
                 if item["urgency_score"] >= 4 or item["deadline_date"] == target
             ]
         )
+        important = _rank_digest_items(important)
+        deadlines = _rank_digest_items(deadlines)
         personal_service_updates = [
             item
             for item in today_items
             if item["email_kind"]
             in {"personal", "lms_notification", "service_notification", "promotional"}
         ]
+        personal_service_updates = _rank_digest_items(personal_service_updates)
         topics = self.list_topic_suggestions(user_id, statuses=("active", "pending"))
         suggested = [topic for topic in topics if topic["status"] == "pending"]
         return {
             "user_id": user_id,
             "digest_date": digest_date,
+            "recommended_for_you": recommended,
+            "urgent_unmatched": urgent_unmatched,
             "important_emails": important,
             "deadlines": deadlines,
             "personal_service_updates": personal_service_updates,
@@ -563,11 +594,13 @@ class SwiftMemoDB:
             """,
             (user_id,),
         )
-        return [_row_to_digest_item(row) for row in rows]
+        profile = self.get_profile(user_id)
+        return _rank_digest_items([_with_relevance(_row_to_digest_item(row), profile) for row in rows])
 
     def get_preferences(self, user_id: str) -> dict[str, bool]:
         preferences = {category: True for category in CATEGORIES}
         preferences["events"] = False
+        preferences["webinars_seminars_workshops"] = False
         rows = self._fetchall(
             "SELECT category, enabled FROM user_preferences WHERE user_id = ?",
             (user_id,),
@@ -803,6 +836,7 @@ def _row_to_profile(row: sqlite3.Row) -> dict[str, Any]:
         "user_id": row["user_id"],
         "role": row["role"],
         "affiliation": row["affiliation"],
+        "campus": row["campus"],
         "interests": _json_list(row["interests_json"]),
         "deadlines": _json_list(row["deadlines_json"]),
         "schedules": _json_list(row["schedules_json"]),
@@ -850,6 +884,264 @@ def _clean_string_list(values: list[str]) -> list[str]:
     return cleaned
 
 
+def _with_relevance(item: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    scored = dict(item)
+    text = _item_search_text(item)
+    score = 0.0
+    reasons: list[str] = []
+
+    campus_match, campus_reason = _campus_relevance(profile.get("campus", ""), text)
+    if campus_match == "match":
+        score += 35.0
+        reasons.append(campus_reason)
+    elif campus_match == "mismatch":
+        score -= 25.0
+        reasons.append(campus_reason)
+
+    if item.get("visible_in_feed", True) and item.get("category") in _FOCUSED_CATEGORY_REASONS:
+        score += 18.0
+        reasons.append(_FOCUSED_CATEGORY_REASONS[str(item["category"])])
+
+    score += _score_profile_field(
+        label="role",
+        display="Role",
+        values=[str(profile.get("role", ""))],
+        text=text,
+        weight=8.0,
+        max_matches=1,
+        reasons=reasons,
+    )
+    score += _score_profile_field(
+        label="affiliation",
+        display="Affiliation",
+        values=[str(profile.get("affiliation", ""))],
+        text=text,
+        weight=28.0,
+        max_matches=2,
+        reasons=reasons,
+    )
+    score += _score_profile_field(
+        label="interest",
+        display="Interest",
+        values=list(profile.get("interests", [])),
+        text=text,
+        weight=18.0,
+        max_matches=2,
+        reasons=reasons,
+    )
+    score += _score_profile_field(
+        label="deadline",
+        display="Deadline cue",
+        values=list(profile.get("deadlines", [])),
+        text=text,
+        weight=14.0,
+        max_matches=2,
+        reasons=reasons,
+    )
+    score += _score_profile_field(
+        label="schedule",
+        display="Schedule cue",
+        values=list(profile.get("schedules", [])),
+        text=text,
+        weight=10.0,
+        max_matches=2,
+        reasons=reasons,
+    )
+    score += _score_profile_field(
+        label="context",
+        display="Profile context",
+        values=[str(profile.get("freeform_context", ""))],
+        text=text,
+        weight=8.0,
+        max_matches=3,
+        reasons=reasons,
+    )
+
+    scored["relevance_score"] = round(max(score, -25.0), 2)
+    scored["relevance_reasons"] = _dedupe_reasons(reasons)[:5]
+    scored["campus_match"] = campus_match
+    return scored
+
+
+def _score_profile_field(
+    *,
+    label: str,
+    display: str,
+    values: list[str],
+    text: str,
+    weight: float,
+    max_matches: int,
+    reasons: list[str],
+) -> float:
+    matched = 0
+    total = 0.0
+    for value in values:
+        for term in _profile_terms(value):
+            if _contains_normalized_term(text, term):
+                reasons.append(f"{display}: {term}")
+                total += weight
+                matched += 1
+                break
+        if matched >= max_matches:
+            break
+    return total
+
+
+def _rank_digest_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(items, key=_relevance_rank_key)
+
+
+def _relevance_rank_key(item: dict[str, Any]) -> tuple[int, int, int, float, str, str]:
+    return (
+        -_profile_match_tier(item),
+        -int(item.get("urgency_score", 0)),
+        _deadline_sort_value(item),
+        -float(item.get("relevance_score", 0.0)),
+        str(item.get("email_date", "")),
+        str(item.get("summary_id", "")),
+    )
+
+
+def _profile_match_tier(item: dict[str, Any]) -> int:
+    if item.get("campus_match") == "mismatch":
+        return -1
+    if _is_recommended_for_profile(item):
+        return 1
+    return 0
+
+
+def _is_recommended_for_profile(item: dict[str, Any]) -> bool:
+    if item.get("campus_match") == "mismatch":
+        return False
+    return item.get("campus_match") == "match" or float(item.get("relevance_score", 0.0)) >= 18.0
+
+
+def _deadline_sort_value(item: dict[str, Any]) -> int:
+    value = item.get("deadline_date") or str(item.get("email_date", ""))[:10]
+    try:
+        return date.fromisoformat(str(value)).toordinal()
+    except ValueError:
+        return 9999999
+
+
+def _item_search_text(item: dict[str, Any]) -> str:
+    return _normalize_text(
+        " ".join(
+            str(item.get(key, ""))
+            for key in (
+                "source_subject",
+                "sender",
+                "title",
+                "summary",
+                "category",
+                "email_kind",
+            )
+        )
+    )
+
+
+def _campus_relevance(campus: str, text: str) -> tuple[str, str]:
+    wanted = _normalize_campus(campus)
+    if wanted is None:
+        return "neutral", "Campus not set"
+
+    text_campuses = _campuses_in_text(text)
+    if not text_campuses:
+        return "neutral", "No campus cue"
+    if wanted == "both":
+        return "match", "Campus: Both"
+    if wanted in text_campuses:
+        return "match", f"Campus: {wanted.title()}"
+    if len(text_campuses) == 1:
+        campus_label = next(iter(text_campuses)).title()
+        return "mismatch", f"Campus mismatch: {campus_label}"
+    return "neutral", "Mixed campus cues"
+
+
+def _normalize_campus(value: str) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    if any(token in text for token in ("both", "hybrid", "all campus", "all campuses")):
+        return "both"
+    if any(token in text for token in _MANILA_CAMPUS_TERMS):
+        return "manila"
+    if any(token in text for token in _LAGUNA_CAMPUS_TERMS):
+        return "laguna"
+    return None
+
+
+def _campuses_in_text(text: str) -> set[str]:
+    campuses: set[str] = set()
+    if any(term in text for term in _MANILA_CAMPUS_TERMS):
+        campuses.add("manila")
+    if any(term in text for term in _LAGUNA_CAMPUS_TERMS):
+        campuses.add("laguna")
+    return campuses
+
+
+def _profile_terms(value: str) -> list[str]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return []
+
+    terms: list[str] = _college_alias_terms(normalized)
+    words = [word for word in normalized.split() if word not in _PROFILE_STOP_WORDS]
+    compact = "".join(word[0] for word in words if word)
+    for term in (normalized, compact):
+        if len(term) >= 3:
+            terms.append(term)
+    for size in (3, 2):
+        for index in range(0, max(len(words) - size + 1, 0)):
+            terms.append(" ".join(words[index : index + size]))
+    for word in words:
+        if len(word) >= 4:
+            terms.append(word)
+    return _dedupe_strings(terms)
+
+
+def _college_alias_terms(normalized_value: str) -> list[str]:
+    terms: list[str] = []
+    for aliases in _DLSU_COLLEGE_ALIASES:
+        normalized_aliases = [_normalize_text(alias) for alias in aliases]
+        if any(_contains_normalized_term(normalized_value, alias) for alias in normalized_aliases):
+            terms.extend(normalized_aliases)
+    return terms
+
+
+def _contains_normalized_term(text: str, term: str) -> bool:
+    normalized = _normalize_text(term)
+    if not normalized:
+        return False
+    return f" {normalized} " in f" {text} "
+
+
+def _normalize_text(value: str) -> str:
+    ascii_value = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    normalized = re.sub(r"[^a-z0-9]+", " ", ascii_value.lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _dedupe_reasons(values: list[str]) -> list[str]:
+    return _dedupe_strings([value for value in values if value and not value.endswith("not set")])
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = value.lower()
+        if key in seen:
+            continue
+        deduped.append(value)
+        seen.add(key)
+    return deduped
+
+
 def _topic_id(user_id: str, label: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"swiftmemo-topic:{user_id}:{label.lower()}"))
 
@@ -890,6 +1182,109 @@ def _unique_digest_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
     return unique
 
+
+_FOCUSED_CATEGORY_REASONS = {
+    "canvas_tasks": "Category: Canvas Tasks",
+    "exchange_programs": "Category: Exchange Student Programs",
+    "library": "Category: Library",
+    "finance": "Category: Finance",
+    "campus_access": "Category: Campus Access",
+    "health_safety": "Category: Health & Safety",
+}
+
+_MANILA_CAMPUS_TERMS = (
+    "manila",
+    "taft",
+    "malate",
+    "henry sy",
+    "henry sy sr hall",
+    "andrew building",
+    "yuchengco",
+    "velasco",
+    "st la salle",
+)
+
+_LAGUNA_CAMPUS_TERMS = (
+    "laguna",
+    "binan",
+    "bi an",
+    "canlubang",
+    "ekrh",
+    "laguna campus",
+)
+
+_DLSU_COLLEGE_ALIASES = (
+    (
+        "Ramon V. del Rosario College of Business",
+        "Ramon V del Rosario College of Business",
+        "RVRCOB",
+        "RVR COB",
+        "College of Business",
+    ),
+    (
+        "Gokongwei College of Engineering",
+        "GCOE",
+        "College of Engineering",
+        "Engineering",
+    ),
+    (
+        "College of Computer Studies",
+        "CCS",
+        "Computer Studies",
+    ),
+    (
+        "College of Science",
+        "COS",
+    ),
+    (
+        "College of Liberal Arts",
+        "CLA",
+        "Liberal Arts",
+    ),
+    (
+        "Br. Andrew Gonzalez FSC College of Education",
+        "Brother Andrew Gonzalez FSC College of Education",
+        "Andrew Gonzalez College of Education",
+        "BAGCED",
+        "College of Education",
+    ),
+    (
+        "Tañada-Diokno School of Law",
+        "Tanada-Diokno School of Law",
+        "Tanada Diokno School of Law",
+        "School of Law",
+        "SOL",
+    ),
+    (
+        "School of Economics",
+        "SOE",
+        "Economics",
+    ),
+    (
+        "School of Innovation and Sustainability",
+        "School of Innovation and Sustainability Laguna",
+        "School of Innovation and Sustainability (Laguna)",
+        "Innovation and Sustainability",
+        "SIS",
+        "SIS Laguna",
+    ),
+)
+
+_PROFILE_STOP_WORDS = {
+    "and",
+    "are",
+    "college",
+    "department",
+    "for",
+    "from",
+    "lasalle",
+    "of",
+    "office",
+    "school",
+    "the",
+    "university",
+    "with",
+}
 
 _TOPIC_STOP_WORDS = {
     "about",
