@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["ollama", "gemini"] = "ollama"
     ollama_model: str = "qwen2.5:latest"
     ollama_base_url: str = "http://localhost:11434"
+    ollama_timeout_seconds: float = 25.0
     gemini_model: str = "gemini-1.5-flash"
     google_api_key: str | None = None
 

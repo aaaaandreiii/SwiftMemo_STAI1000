@@ -33,6 +33,7 @@ def build_chat_model(temperature: float = 0.0) -> Any:
         model=settings.ollama_model,
         base_url=settings.ollama_base_url,
         temperature=temperature,
+        client_kwargs={"timeout": settings.ollama_timeout_seconds},
     )
 
 
@@ -80,6 +81,6 @@ def build_embeddings() -> Any:
         return OllamaEmbeddings(
             model=settings.ollama_embedding_model,
             base_url=settings.ollama_base_url,
+            client_kwargs={"timeout": settings.ollama_timeout_seconds},
         )
     return SentenceTransformerEmbeddings(settings.huggingface_embedding_model)
-

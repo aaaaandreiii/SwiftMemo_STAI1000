@@ -40,7 +40,7 @@ const ALL_ON = CATEGORIES.reduce(
   {} as Record<CategoryKey, boolean>,
 );
 const INGEST_CHUNK_SIZE = 20;
-const PROCESS_BATCH_SIZE = 10;
+const PROCESS_BATCH_SIZE = 1;
 
 interface HealthState {
   online: boolean;

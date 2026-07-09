@@ -84,6 +84,31 @@ export interface SummaryAudioResponse {
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
+function errorDetailFromResponse(raw: string, status: number, statusText: string): string {
+  try {
+    const payload = raw ? JSON.parse(raw) : null;
+    if (typeof payload.detail === "string") return payload.detail;
+    if (payload?.detail) return JSON.stringify(payload.detail);
+  } catch {
+    // Fall through to HTML/text cleanup below.
+  }
+
+  if (status === 524 || /error code\s*524/i.test(raw) || /cloudflare/i.test(raw)) {
+    return (
+      "The backend timed out while processing this batch. "
+      + "Retry the action; processing now runs one announcement per request to stay below edge timeouts."
+    );
+  }
+
+  const text = raw
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || statusText || `Request failed with status ${status}`;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit & { userId?: string } = {},
@@ -100,15 +125,7 @@ async function request<T>(
 
   if (!response.ok) {
     const raw = await response.text();
-    let detail = response.statusText;
-
-    try {
-      const payload = raw ? JSON.parse(raw) : null;
-      detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
-    } catch {
-      detail = raw;
-    }
-
+    const detail = errorDetailFromResponse(raw, response.status, response.statusText);
     throw new Error(detail || `Request failed with status ${response.status}`);
   }
 
