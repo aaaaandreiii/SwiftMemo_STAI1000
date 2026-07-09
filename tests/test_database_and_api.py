@@ -4,9 +4,10 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from backend import agents
 from backend import main
 from backend.database import SwiftMemoDB
-from backend.schemas import EmailRecord, GuardrailResult, IngestedEmail, TriageSummary
+from backend.schemas import EmailRecord, GuardrailResult, IngestedEmail, ProcessedEmail, TriageSummary
 
 
 def sample_email(email_id: str = "email-1", subject: str = "HDA: Event") -> EmailRecord:
@@ -132,3 +133,88 @@ def test_ingest_endpoint_supports_mock_limit_and_offset(monkeypatch, tmp_path):
     assert payload["accepted"][0]["email"]["id"] == "email-1"
     assert db.get_email("tenant-a", "email-0") is None
     assert db.get_email("tenant-a", "email-1") is not None
+
+
+def install_fast_process_stub(monkeypatch, db: SwiftMemoDB) -> None:
+    monkeypatch.setattr(agents, "DATABASE", db)
+
+    def fake_process_email_fast(
+        email: EmailRecord,
+        user_id: str,
+        guardrail: GuardrailResult | None = None,
+    ) -> ProcessedEmail:
+        final_guardrail = guardrail or sample_guardrail()
+        summary = sample_summary()
+        summary_id = db.save_triage(user_id, email.id, summary, True)
+        return ProcessedEmail(
+            email_id=email.id,
+            source_subject=email.subject,
+            guardrail=final_guardrail,
+            result=summary,
+            summary_id=summary_id,
+            visible_in_feed=True,
+            tool_observation="test stub",
+        )
+
+    monkeypatch.setattr(agents, "process_email_fast", fake_process_email_fast)
+
+
+def test_process_endpoint_skips_emails_that_already_have_summaries(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    for index in range(3):
+        email = sample_email(f"email-{index}", subject=f"HDA: Event {index}")
+        db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+    db.save_triage(user_id, "email-0", sample_summary(), True)
+    install_fast_process_stub(monkeypatch, db)
+
+    client = TestClient(main.app)
+    response = client.post(
+        "/api/process",
+        json={"limit": 5, "offset": 0},
+        headers={"X-User-ID": user_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["processed_count"] == 2
+    assert [item["email_id"] for item in payload["items"]] == ["email-1", "email-2"]
+
+
+def test_process_endpoint_limit_one_processes_distinct_emails_until_empty(
+    monkeypatch,
+    tmp_path,
+):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    for index in range(2):
+        email = sample_email(f"email-{index}", subject=f"HDA: Event {index}")
+        db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+    install_fast_process_stub(monkeypatch, db)
+
+    client = TestClient(main.app)
+    first = client.post(
+        "/api/process",
+        json={"limit": 1, "offset": 0},
+        headers={"X-User-ID": user_id},
+    )
+    second = client.post(
+        "/api/process",
+        json={"limit": 1, "offset": 0},
+        headers={"X-User-ID": user_id},
+    )
+    third = client.post(
+        "/api/process",
+        json={"limit": 1, "offset": 0},
+        headers={"X-User-ID": user_id},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert first.json()["processed_count"] == 1
+    assert second.json()["processed_count"] == 1
+    assert third.json()["processed_count"] == 0
+    assert first.json()["items"][0]["email_id"] == "email-0"
+    assert second.json()["items"][0]["email_id"] == "email-1"
+    assert third.json()["items"] == []

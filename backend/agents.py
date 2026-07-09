@@ -222,8 +222,8 @@ def process_email_fast(
 
 
 def process_batch(user_id: str, limit: int, offset: int = 0) -> list[ProcessedEmail]:
-    emails = DATABASE.valid_emails(user_id, limit=limit, offset=offset)
-    if not emails:
+    emails = DATABASE.unprocessed_valid_emails(user_id, limit=limit)
+    if not emails and not DATABASE.valid_emails(user_id, limit=1):
         emails = load_mock_emails(limit=limit, offset=offset)
 
     processed: list[ProcessedEmail] = []

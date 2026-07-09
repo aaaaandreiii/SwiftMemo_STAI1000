@@ -95,8 +95,8 @@ function errorDetailFromResponse(raw: string, status: number, statusText: string
 
   if (status === 524 || /error code\s*524/i.test(raw) || /cloudflare/i.test(raw)) {
     return (
-      "The backend timed out while processing this batch. "
-      + "Retry the action; processing now runs one announcement per request to stay below edge timeouts."
+      "That hosted request timed out at the edge; the backend may still be finishing it. "
+      + "Retry safely, because already summarized announcements are skipped."
     );
   }
 

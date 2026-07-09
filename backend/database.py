@@ -169,6 +169,23 @@ class SwiftMemoDB:
         rows = self._fetchall(sql, params)
         return [_row_to_email(row) for row in rows]
 
+    def unprocessed_valid_emails(self, user_id: str, limit: int) -> list[EmailRecord]:
+        rows = self._fetchall(
+            """
+            SELECT e.*
+            FROM emails e
+            LEFT JOIN triage_summaries ts
+                ON ts.user_id = e.user_id AND ts.email_id = e.email_id
+            WHERE e.user_id = ?
+                AND e.guardrail_valid = 1
+                AND ts.summary_id IS NULL
+            ORDER BY e.email_date ASC, e.email_id ASC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        )
+        return [_row_to_email(row) for row in rows]
+
     def save_triage(
         self,
         user_id: str,

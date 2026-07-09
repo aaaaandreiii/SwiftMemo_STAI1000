@@ -358,8 +358,16 @@ export default function App() {
         batch: processBatch,
       });
 
-      for (let processOffset = 0; processOffset < accepted; processOffset += PROCESS_BATCH_SIZE) {
-        const response = await processFeed(tenant.id, PROCESS_BATCH_SIZE, processOffset);
+      while (processed < accepted) {
+        setFeedWorkflow({
+          stage: "processing",
+          fetched: accepted + rejected,
+          accepted,
+          rejected,
+          processed,
+          batch: processBatch,
+        });
+        const response = await processFeed(tenant.id, PROCESS_BATCH_SIZE, 0);
         processed += response.processed_count;
         setFeedWorkflow({
           stage: "processing",

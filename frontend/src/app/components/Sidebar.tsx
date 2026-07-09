@@ -133,7 +133,7 @@ export function Sidebar({
     workflow.stage === "fetching"
       ? `Fetching batch ${workflow.batch || 1}...`
       : workflow.stage === "processing"
-        ? `Processing batch ${workflow.batch || 1}...`
+        ? `Summarizing item ${workflow.batch || 1}...`
         : workflow.stage === "error"
           ? "Retry Fetch & Process"
           : "Fetch & Process Mock Data";
@@ -207,9 +207,9 @@ export function Sidebar({
               {workflow.stage === "fetching" &&
                 `${workflow.fetched} fetched · ${workflow.accepted} accepted · ${workflow.rejected} rejected`}
               {workflow.stage === "processing" &&
-                `${workflow.processed} summarized · ${workflow.accepted} accepted · ${workflow.rejected} rejected`}
+                `${workflow.processed}/${workflow.accepted} summarized · one at a time`}
               {workflow.stage === "completed" &&
-                `${workflow.processed} processed · ${workflow.rejected} rejected`}
+                `${workflow.processed} summarized · ${workflow.rejected} rejected`}
               {workflow.stage === "error" && "Fetch/process failed"}
             </div>
             {workflow.error && (
