@@ -6,11 +6,11 @@ import requests
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Load SwiftMemo mock HDA data through the API.")
+    parser = argparse.ArgumentParser(description="Load SwiftMemo preview HDA data through the API.")
     parser.add_argument("--api", default="http://localhost:8000", help="FastAPI base URL")
-    parser.add_argument("--data", default="data/mock_hdas.json", help="Local mock dataset path")
+    parser.add_argument("--data", default="data/mock_hdas.json", help="Local preview dataset path")
     parser.add_argument("--limit", type=int, default=None, help="Optional number of records")
-    parser.add_argument("--user-id", default="andrei", help="Tenant X-User-ID header")
+    parser.add_argument("--user-id", default="andrei", help="Profile X-User-ID header")
     args = parser.parse_args()
 
     dataset = json.loads(Path(args.data).read_text(encoding="utf-8"))

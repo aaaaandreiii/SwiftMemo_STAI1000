@@ -87,12 +87,12 @@ export function Sidebar({
 
   const workflowLabel =
     workflow.stage === "fetching"
-      ? `Fetching batch ${workflow.batch || 1}...`
+      ? "Loading Announcements..."
       : workflow.stage === "processing"
-        ? `Summarizing item ${workflow.batch || 1}...`
+        ? "Creating Summaries..."
         : workflow.stage === "error"
-          ? "Retry Fetch & Process"
-          : "Fetch & Process Mock Data";
+          ? "Retry Sync"
+          : "Sync";
 
   return (
     <aside className="glass flex h-full flex-col gap-5 overflow-y-auto rounded-none border-y-0 border-l-0 p-4">
@@ -116,7 +116,7 @@ export function Sidebar({
               />
             </span>
             <span className={`text-sm ${online ? "text-[#10b981]" : "text-[#f43f5e]"}`}>
-              {online ? "FastAPI Online" : "FastAPI Offline"}
+              {online ? "Service Online" : "Service Offline"}
             </span>
           </div>
           <StatRow icon={Cpu} label="LLM Provider" value={provider} tone="#34d399" />
@@ -186,7 +186,7 @@ export function Sidebar({
           <button
             onClick={() => setAddingTopic((value) => !value)}
             className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground transition-all hover:border-[#10b981]/50 hover:text-[#34d399] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#10b981]/40"
-            title="Add custom topic"
+            title="Add topic I care about"
           >
             {addingTopic ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
           </button>
@@ -197,7 +197,7 @@ export function Sidebar({
               value={topicLabel}
               onChange={(event) => setTopicLabel(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && submitTopic()}
-              placeholder="Topic or concept"
+              placeholder="Topics I Care About"
               className="min-w-0 flex-1 rounded-lg border border-border bg-input/60 px-2.5 py-1.5 text-xs outline-none transition-all placeholder:text-muted-foreground focus:border-[#10b981]/50 focus:ring-2 focus:ring-[#10b981]/20"
             />
             <button
@@ -256,7 +256,7 @@ export function Sidebar({
           {customTopics.length > 0 && (
             <div className="pt-2">
               <p className="px-2.5 pb-1 font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground">
-                Custom Topics
+                Topics I Care About
               </p>
               <div className="space-y-1">
                 {customTopics.map((topic) => (

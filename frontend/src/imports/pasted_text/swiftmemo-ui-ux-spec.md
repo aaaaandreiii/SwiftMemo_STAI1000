@@ -7,15 +7,15 @@ This document acts as a comprehensive UI/UX design specification for **SwiftMemo
 ## 1. Core Project Philosophy & Vision
 
 ### The Problem: Announcement Fatigue
-Students and faculty at DLSU are bombarded with a constant stream of institutional emails (HDAs). Critical deadlines (enrollment, tuition payments, clearance submissions) are frequently buried under irrelevant announcements, causing massive cognitive load, missed dates, and operational friction.
+Students and faculty at DLSU are bombarded with a constant stream of Official DLSU Email updates (HDAs). Critical deadlines (enrollment, tuition payments, clearance submissions) are frequently buried under irrelevant announcements, causing massive cognitive load, missed dates, and operational friction.
 
 ### The Solution: SwiftMemo
 SwiftMemo is an **intelligent, agentic triage layer** that intercepts raw HDA emails and converts them into structured, actionable intelligence. It:
-*   Filters out non-institutional noise (using safety guardrails).
+*   Filters out non-institutional noise (using safety checks).
 *   Extracts critical dates, deadines, and urgency levels.
 *   Categorizes announcements (Academic, Finance, IT, Health, etc.).
-*   Provides a tenant-private RAG search archive and contextual reply draft assistant.
-*   Enables voice-accessible briefings (audio text-to-speech stubs).
+*   Provides a profile-private RAG search archive and contextual reply draft assistant.
+*   Enables voice-accessible briefings (audio text-to-speech previews).
 
 ### Core Design Philosophy
 1.  **Action over Info**: Don't just show text; show *what needs to be done* and *when*. Highlight deadlines and actions immediately.
@@ -47,11 +47,11 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
 
 | Current MVP Friction (Streamlit) | Proposed Premium UX Redesign |
 | :--- | :--- |
-| **Tab Fatigue**: Users must click separate tabs to read a summary, ask a chat question, generate a draft response, and edit preferences. | **Unified Split-Screen Workspace**: A single page containing the main Triage Feed with a collapsible sidebar for controls/preferences and a slide-out drawer for RAG Chat & Draft Assistant (the "Copilot Pane"). |
+| **Tab Fatigue**: Users must click separate tabs to read a summary, ask a chat question, generate a draft response, and edit preferences. | **Unified Split-Screen Workspace**: A single page containing the main Priority Inbox with a collapsible sidebar for controls/preferences and a slide-out drawer for RAG Chat & Draft Assistant (the "Copilot Pane"). |
 | **Dry Tabular Data**: Visible summaries are shown in a standard database-style grid. Deadlines and urgency metrics are flat text. | **Visual Urgency Feed**: Card-based masonry or timeline layouts. High-urgency cards glow with subtle color gradients, showing visual countdown timers (e.g., "Due in 2 days"). |
 | **Disconnected Draft Assistant**: The draft generator requires selecting an email from a dropdown list and writing instructions in a separate text area. | **Inline "Pin & Draft" Workflow**: Each card has a "Draft Reply" action button. Clicking it slides open the Copilot pane, pins the email summary as context, and focuses the user prompt input. |
 | **Rigid Preferences Setup**: Toggles require page reloads or manual "Save Preferences" button clicks. | **Real-Time Feed Filtering**: Toggles in a sidebar automatically update the central feed with smooth CSS scale/fade transitions. |
-| **Clunky Feedback & Audio Preview**: Feedback forms and audio stub player are hidden in a backend "Phase 2" preview tab. | **Contextual Floating Controls**: Audio summary is represented by a small speaker icon on the card, spawning a bottom-floating audio player. Category override is a quick dropdown on the card itself. |
+| **Clunky Feedback & Audio Preview**: Feedback forms and audio preview player are hidden in a backend "Phase 2" preview tab. | **Contextual Floating Controls**: Audio summary is represented by a small speaker icon on the card, spawning a bottom-floating audio player. Category override is a quick dropdown on the card itself. |
 
 ---
 
@@ -59,14 +59,14 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
 
 ```
 +------------------------------------------------------------------------------------------------------+
-|  [Logo] SwiftMemo         [Search all announcements...]   (WS Status) (Tenant: Andrei v) [Settings] |
+|  [Logo] SwiftMemo         [Search all announcements...]   (WS Status) (Profile: Andrei v) [Settings] |
 +------------------------------------------------------------------------------------------------------+
-|  SIDEBAR           |  MAIN WORKSPACE (Triage Feed & Timeline)                   |  COPILOT DRAWER   |
+|  SIDEBAR           |  MAIN WORKSPACE (Priority Inbox & Timeline)                 |  COPILOT DRAWER   |
 |                    |                                                            |                   |
-|  * Active Tenant   |  +-- TIMELINE STRIP -------------------------------------+ |  (RAG Chat &      |
+|  * Current User    |  +-- TIMELINE STRIP -------------------------------------+ |  (RAG Chat &      |
 |  * Health & LLM    |  | [Mon 10]    [Tue 11]    [! Wed 12]    [Thu 13]        | |   Draft Assistant)|
 |                    |  +--------------------------------------------------------+ |                   |
-|  [Ingest Mock]     |                                                            |  [x] Close        |
+|  [Sync]            |                                                            |  [x] Close        |
 |  [Process Feed]    |  Filter: [Academic] [Finance] [Campus Access] [Events v]   |                   |
 |                    |                                                            |  Context:         |
 |  PREFERENCES       |  +-- CARD (Urgent: High) --------------------------------+ |  [Subject Title]  |
@@ -87,21 +87,21 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
 *   **App Logo & Title**: Modern typography with a sleek, glowing green dot next to "SwiftMemo".
 *   **Global Search Bar**: Search past announcements with instant autocomplete suggestions.
 *   **WebSocket Indicator**: A small green/red breathing light indicating if live notifications are connected.
-*   **Tenant Selector Badge**: A drop-down user-profile chip displaying the current active tenant (e.g., `andrei`, `audric`, `sophia`) to easily test multi-tenant separation.
+*   **Profile Selector Badge**: A drop-down user-profile chip displaying the current user (e.g., `andrei`, `audric`, `sophia`) to easily test profile separation.
 
 ### 4.2. Left Sidebar (Control & Preferences Panel)
-*   **System Status Widget**: Minimalist card showing FastAPI health state, API response latency, and active LLM provider (Gemini or Ollama).
+*   **System Status Widget**: Minimalist card showing service health state, API response latency, and active LLM provider (Gemini or Ollama).
 *   **Action Command Panel**:
-    *   **"Ingest Mock Data"**: Primary button with loading spinner when triggered.
-    *   **"Process Feed"**: Secondary button that displays a circular progress bar and updates count metrics (e.g., "11 processed, 3 rejected").
+    *   **"Sync"**: Primary button with loading spinner when triggered.
+    *   **"Create Summaries"**: Secondary state that displays progress and updates count metrics (e.g., "11 processed, 3 rejected").
 *   **Preference Filters**: Interactive category switches (custom icons for *Academic, Finance, Campus Access, Health & Safety, Events, IT Services, Administrative*).
 
-### 4.3. Central Feed Panel (Triage Feed & Analytics)
+### 4.3. Central Feed Panel (Priority Inbox & Analytics)
 *   **Timeline Strip**: A horizontal scrollbar of calendar dates. Dates with upcoming deadlines have red indicator badges. Clicking a date filters the feed instantly.
 *   **Quick Metrics Header**: Small glassmorphic metric cards showing:
-    *   *Visible Feed Count*
+    *   *Showing Count*
     *   *Critical Deadlines Pending*
-    *   *Hidden announcements (filtered out)*
+    *   *Hidden announcements (Not Shown)*
 *   **Announcement Summary Card**:
     *   **Header**: Category tag (e.g., `Finance` in amber, `Health & Safety` in crimson), Urgency Score (1-5 represented by filled-in circles), and exact target date.
     *   **Title**: Bold, prominent title.
@@ -110,7 +110,7 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
         *   **"Generate Draft"**: Quick reply icon. Instantly opens the Copilot Panel with this email pre-selected.
         *   **"Listen Audio Summary"**: Play button. Triggers the audio summary player.
         *   **"Recategorize"**: Small edit tag. Opens an inline feedback dropdown to submit class overrides (Phase 2).
-        *   **"Hide"**: Eye-slash icon. Instantly hides the announcement based on tenant preferences.
+        *   **"Hide"**: Eye-slash icon. Instantly hides the announcement based on profile preferences.
 
 ### 4.4. Right Sliding Drawer (The Copilot Panel)
 *   **Dual Mode Selector**: A sliding segment selector: **[ Chat Archive | Draft Assistant ]**.
@@ -128,7 +128,7 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
 
 ### 4.6. Analytics & MLflow Telemetry Panel (Collapsible Overlay)
 *   For administrators, a hidden-by-default drawer displaying model metrics:
-    *   *Guardrail Precision/Recall* gauge charts.
+    *   *Safety Check Precision/Recall* gauge charts.
     *   *Pydantic Schema Validation Success Rate* percentage bar.
     *   *Model Latency & Token Usage* line graph.
 
@@ -139,7 +139,7 @@ The current Streamlit MVP uses a standard tabbed view. The table below highlight
 Copy and paste the following prompts directly into the respective design AI tools.
 
 ### 5.1. Prompt for v0.dev / Claude (React + Tailwind + Framer Motion)
-> **Copy the text below to generate the React mockup code:**
+> **Copy the text below to generate the React preview code:**
 ```text
 Create a high-fidelity, interactive React dashboard for "SwiftMemo"—an agentic AI triage platform for De La Salle University's Help Desk Announcements. Use Tailwind CSS and Lucide React icons.
 
@@ -148,14 +148,14 @@ Design Guidelines:
 - Typography: Clean modern sans-serif (Inter/Outfit).
 
 Layout Structure:
-1. Global Header: Logo with a green pulse dot, Search bar, WebSocket connectivity badge, Tenant selector dropdown (Andrei, Audric, Sophia), Settings icon.
+1. Global Header: Logo with a green pulse dot, Search bar, WebSocket connectivity badge, Profile selector dropdown (Andrei, Audric, Sophia), Settings icon.
 2. Left Sidebar: Minimalist API connection status widget (shows FastAPI health + Gemini/Ollama indicator), prominent "Ingest" & "Process" buttons, and Category toggle filters.
 3. Central Feed: Horizontal scrollable "Deadline Timeline Tracker", quick metric cards, and a vertical feed of "Announcement Cards". 
    - Each card displays: Category Badge (e.g. Finance, Academic), Urgency Score (1-5 visual indicator), Deadline countdown chip, Title, structured bullet points, and a footer toolbar with action buttons: "Generate Draft" (reply icon), "Listen Audio" (play icon), and "Recategorize" (dropdown).
 4. Right Drawer (Copilot Panel): Slides open from the right side. Contains a segmented selector: [Chat Archive | Draft Assistant]. 
    - Under Draft: shows "Pinned Context: [Annoucement Title]", a text area for prompt inputs, and a modern output window showing the generated draft with "Copy" button.
    - Under Chat: standard assistant/user message layout, with expandable "Source Documents" cards.
-5. Bottom Bar: Floating audio briefing player containing a play/pause button, a mocked wave visualizer, and speed controls.
+5. Bottom Bar: Floating audio briefing player containing a play/pause button, a preview wave visualizer, and speed controls.
 
 Ensure all interactive states are fully simulated (hover effects, active tab highlights, sliding animations for the right drawer, and fluid toggle updates).
 ```
@@ -173,19 +173,19 @@ Create a desktop web dashboard layout for an AI email triage and assistant app n
 - Visuals: Use the Inter typeface, semi-transparent overlays, crisp SVG icons, and a highly premium layout suitable for a student productivity application.
 ```
 
-### 5.3. Prompt for Midjourney / Stable Diffusion (Visual Mood Boards & Mockups)
+### 5.3. Prompt for Midjourney / Stable Diffusion (Visual Mood Boards & Previews)
 > **Copy the text below to generate aesthetic reference images:**
 ```text
-A high-fidelity desktop web application dashboard mockup, dark mode, futuristic and sleek UI design, glassmorphism, glowing emerald green accents, card-based interface, side drawers, minimal widgets, data visualization charts, clean typography, DLSU Archer theme, 8k resolution, cinematic lighting, modern SaaS UI design, Figma portfolio display, UX award winner --ar 16:9 --v 6.0
+A high-fidelity desktop web application dashboard preview, dark mode, futuristic and sleek UI design, glassmorphism, glowing emerald green accents, card-based interface, side drawers, minimal widgets, data visualization charts, clean typography, DLSU Archer theme, 8k resolution, cinematic lighting, modern SaaS UI design, Figma portfolio display, UX award winner --ar 16:9 --v 6.0
 ```
 
 ---
 
 ## 6. Target User Journeys (Aesthetic & Flow Walkthroughs)
 
-### A. The "Golden Path" Live Demo Flow
-1.  **System Initialization**: The user opens the page in dark mode. The sidebar API indicator glows green with the label `FastAPI Online | Gemini 1.5 Flash`.
-2.  **Feeding the AI**: The user clicks `Ingest Mock Data`. The button triggers a subtle loading pulse. A notification banner slides down: `11 announcements successfully fetched.`
+### A. The "Golden Path" Live Preview Flow
+1.  **System Initialization**: The user opens the page in dark mode. The sidebar API indicator glows green with the label `Service Online | Gemini 1.5 Flash`.
+2.  **Feeding the AI**: The user clicks `Sync`. The button triggers a subtle loading pulse. A notification banner slides down: `11 announcements successfully fetched.`
 3.  **Triage Processing**: The user clicks `Process Feed`. An overlay blur sweeps the screen, showing the agents working: *Classifying, Parsing Deadlines, Storing to ChromaDB.*
 4.  **Managing the Feed**: The feed updates. A crimson-glowing card sits at the top: **"Tuition Payment Deadline Extension"** with a red countdown badge: `Due in 6 Days`.
 5.  **Context-Aware Action**: The user clicks the card's `Draft Reply` icon. The right drawer slides in. The context chip automatically pins `Tuition Payment Deadline Extension`. The user types: *"Request a payment plan options list"*, and clicks generate. A draft appears instantly in the editor window.

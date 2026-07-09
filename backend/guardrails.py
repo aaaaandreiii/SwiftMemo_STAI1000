@@ -11,7 +11,7 @@ from backend.schemas import EmailRecord, GuardrailResult
 GUARDRAIL_SYSTEM_PROMPT = """You classify email updates for SwiftMemo.
 
 Classify every readable normal email as processable. Do not reject personal emails,
-Canvas/LMS notifications, service notifications, promotions, student organization
+Canvas Updates, account/service updates, promotions, student organization
 emails, or casual messages. Use is_valid=false only for technically unusable records,
 such as empty or unreadable content.
 
@@ -118,7 +118,7 @@ def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
     ):
         return GuardrailResult(
             is_valid=True,
-            reason="LMS notification classified for summarization.",
+            reason="Canvas Updates classified for summarization.",
             confidence=0.94,
             is_institutional=False,
             email_kind="lms_notification",
@@ -199,7 +199,7 @@ def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
     ):
         return GuardrailResult(
             is_valid=True,
-            reason="Service notification classified for summarization.",
+            reason="Account/Service Update classified for summarization.",
             confidence=0.86,
             is_institutional=False,
             email_kind="service_notification",
@@ -216,7 +216,7 @@ def heuristic_validate_announcement(email: EmailRecord) -> GuardrailResult:
     if (official_sender or hda_subject) and institutional_notice:
         return GuardrailResult(
             is_valid=True,
-            reason="Institutional email update classified for summarization.",
+            reason="Official DLSU Email update classified for summarization.",
             confidence=0.82,
             is_institutional=True,
             email_kind="institutional",

@@ -24,7 +24,7 @@ Use only the retrieved context for factual claims. If the answer is not in the c
 
 DRAFT_SYSTEM_PROMPT = """You write professional email reply drafts.
 
-Use the retrieved tenant-scoped email context only as background. Keep the draft concise, respectful, and action-oriented. Do not invent details.
+Use the retrieved profile-scoped email context only as background. Keep the draft concise, respectful, and action-oriented. Do not invent details.
 """
 
 
@@ -104,6 +104,10 @@ class RagService:
                 urgency_score=item["urgency_score"],
             )
             self.index_email_summary(user_id, email, summary, item["visible_in_feed"])
+
+    def clear_user_index(self, user_id: str) -> None:
+        with self._lock:
+            self._collection.delete(where={"user_id": user_id})
 
     def retrieve(self, user_id: str, query: str, top_k: int) -> list[RetrievedChunk]:
         self.ensure_user_indexed(user_id)
@@ -291,7 +295,7 @@ def _small_talk_answer(message: str) -> str | None:
         return "Got it. Send an email archive question when you are ready."
     if normalized in identity_prompts:
         return (
-            "I am the SwiftMemo copilot. I answer questions using your tenant-scoped "
+            "I am the SwiftMemo copilot. I answer questions using your profile-scoped "
             "email archive and can help draft concise replies."
         )
 
@@ -306,7 +310,7 @@ def _chunks_to_context(chunks: list[RetrievedChunk]) -> str:
         f"[{index + 1}] Subject: {chunk.metadata.get('subject')}\n"
         f"Date: {chunk.metadata.get('date')}\n"
         f"Category: {chunk.metadata.get('category')}\n"
-        f"Visible in feed: {chunk.metadata.get('visible_in_feed')}\n"
+        f"Showing: {chunk.metadata.get('visible_in_feed')}\n"
         f"Content:\n{chunk.document}"
         for index, chunk in enumerate(chunks)
     )

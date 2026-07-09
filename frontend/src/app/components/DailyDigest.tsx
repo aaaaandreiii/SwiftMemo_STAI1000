@@ -9,7 +9,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { categoryByBackend } from "../data";
+import { categoryByBackend, emailKindLabel } from "../data";
 import type { DailyDigestItem, DailyDigestResponse, TopicSuggestion } from "../api";
 
 interface DailyDigestProps {
@@ -37,7 +37,7 @@ function DigestItemRow({ item }: { item: DailyDigestItem }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
           <p className="truncate text-[0.7rem] text-muted-foreground">
-            {item.email_kind.replace(/_/g, " ")} · {formatDate(item.email_date)}
+            {emailKindLabel(item.email_kind)} · {formatDate(item.email_date)}
           </p>
         </div>
         <span className="font-mono text-xs text-muted-foreground">{item.urgency_score}/5</span>
@@ -115,10 +115,10 @@ export function DailyDigest({
           empty="No deadlines on this date."
         />
         <DigestColumn
-          title="Personal & Service"
+          title="Personal & Account/Service"
           icon={MailCheck}
           items={digest?.personal_service_updates ?? []}
-          empty="No personal or service updates."
+          empty="No personal or account/service updates."
         />
       </div>
 

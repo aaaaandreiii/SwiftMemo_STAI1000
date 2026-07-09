@@ -610,6 +610,26 @@ class SwiftMemoDB:
                 )
             self._conn.commit()
 
+    def clear_demo_data(self, user_id: str) -> dict[str, int]:
+        tables = (
+            "notification_jobs",
+            "classification_overrides",
+            "chat_messages",
+            "topic_suggestions",
+            "triage_summaries",
+            "emails",
+        )
+        deleted: dict[str, int] = {}
+        with self._lock:
+            for table in tables:
+                cursor = self._conn.execute(
+                    f"DELETE FROM {table} WHERE user_id = ?",
+                    (user_id,),
+                )
+                deleted[table] = max(cursor.rowcount, 0)
+            self._conn.commit()
+        return deleted
+
     def category_enabled(self, user_id: str, category: str) -> bool:
         return self.get_preferences(user_id).get(category, True)
 
@@ -696,7 +716,7 @@ class SwiftMemoDB:
         summary_id: str,
         deadline_date: str | None,
         channel: str = "websocket",
-        status: str = "stubbed",
+        status: str = "preview",
     ) -> str:
         job_id = str(uuid.uuid4())
         with self._lock:

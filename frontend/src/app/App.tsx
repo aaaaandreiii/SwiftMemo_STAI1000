@@ -24,6 +24,7 @@ import {
   getSummaries,
   ingestMockData,
   processFeed,
+  resetDemoData,
   sendFeedback,
   updateProfile,
   updatePreferences,
@@ -115,6 +116,7 @@ export default function App() {
   const [notesError, setNotesError] = useState<string | null>(null);
   const [profile, setProfile] = useState<TenantProfile | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [resettingDemoData, setResettingDemoData] = useState(false);
   const [dailyDigest, setDailyDigest] = useState<DailyDigestResponse | null>(null);
   const [loadingDigest, setLoadingDigest] = useState(false);
 
@@ -189,7 +191,7 @@ export default function App() {
     } catch (error) {
       setItems([]);
       setProfile(null);
-      toast.error("Unable to load tenant data", {
+      toast.error("Unable to load profile data", {
         description: errorMessage(error),
       });
     } finally {
@@ -293,7 +295,7 @@ export default function App() {
     metricFilter === "critical"
       ? "Critical deadlines"
       : metricFilter === "filtered"
-        ? "Filtered out"
+        ? "Not Shown"
         : null;
 
   const critical = criticalItems.length;
@@ -463,8 +465,8 @@ export default function App() {
         processed,
         batch: Math.max(processBatch - 1, 0),
       });
-      toast.success("Mock feed fetched and processed", {
-        description: `${classified} classified · ${skipped} skipped · ${processed} summarized.`,
+      toast.success("Preview feed synced", {
+        description: `${classified} accepted · ${skipped} rejected · ${processed} summarized.`,
       });
     } catch (error) {
       const description = errorMessage(error);
@@ -473,7 +475,7 @@ export default function App() {
         stage: "error",
         error: description,
       }));
-      toast.error("Fetch and process failed", { description });
+      toast.error("Sync failed", { description });
     }
   };
 
@@ -503,7 +505,7 @@ export default function App() {
         summary_id: selected.summaryId,
         email_id: selected.emailId,
         override_category: backendCategory,
-        notes: "Recategorized from the React triage feed.",
+        notes: "Recategorized from the React priority inbox.",
       });
       toast.success(`Recategorized to ${cat}`, { description: "Feedback logged." });
     } catch (error) {
@@ -522,6 +524,43 @@ export default function App() {
       toast.error("Profile save failed", { description: errorMessage(error) });
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handleResetDemoData = async () => {
+    if (resettingDemoData) return;
+    setResettingDemoData(true);
+    try {
+      const response = await resetDemoData(tenant.id);
+      setItems([]);
+      setHidden([]);
+      setSelectedDay(null);
+      setMetricFilter("visible");
+      setContext(null);
+      setAudioTrack(null);
+      setProcessingNotes([]);
+      setFeedWorkflow({
+        stage: "idle",
+        fetched: 0,
+        classified: 0,
+        skipped: 0,
+        processed: 0,
+        batch: 0,
+      });
+      await Promise.all([
+        refreshSummaries(tenant.id),
+        refreshProcessingNotes(tenant.id),
+        refreshDailyDigest(tenant.id, todayIso()),
+      ]);
+      toast.success("Processed preview data cleared", {
+        description: `${response.deleted.emails ?? 0} emails · ${
+          response.deleted.triage_summaries ?? 0
+        } summaries removed.`,
+      });
+    } catch (error) {
+      toast.error("Preview reset failed", { description: errorMessage(error) });
+    } finally {
+      setResettingDemoData(false);
     }
   };
 
@@ -563,7 +602,7 @@ export default function App() {
         tenant={tenant}
         onTenantChange={(t) => {
           setTenant(t);
-          toast(`Switched tenant -> ${t.name}`, { description: "Loading private archive..." });
+          toast(`Switched profile to ${t.name}`, { description: "Loading Your Announcements..." });
         }}
         query={query}
         onQueryChange={setQuery}
@@ -581,9 +620,11 @@ export default function App() {
             notesError={notesError}
             profile={profile}
             profileSaving={profileSaving}
+            resettingDemoData={resettingDemoData}
             onClose={() => setSettingsOpen(false)}
             onRefreshNotes={() => refreshProcessingNotes(tenant.id)}
             onSaveProfile={saveProfile}
+            onResetDemoData={handleResetDemoData}
           />
         )}
       </AnimatePresence>
@@ -731,7 +772,7 @@ export default function App() {
                 {loadingSummaries && (
                   <div className="glass flex flex-col items-center gap-2 rounded-2xl py-16 text-center">
                     <Filter className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Loading tenant archive...</p>
+                    <p className="text-sm text-muted-foreground">Loading Your Announcements...</p>
                   </div>
                 )}
 
@@ -740,7 +781,7 @@ export default function App() {
                     <Filter className="h-8 w-8 text-muted-foreground" />
                     <p className="max-w-sm text-sm text-muted-foreground">
                       {items.length === 0
-                        ? "No summaries yet. Ingest mock data, then process the feed."
+                        ? "No summaries yet. Sync to load announcements."
                         : "No email summaries match your filters."}
                     </p>
                   </div>

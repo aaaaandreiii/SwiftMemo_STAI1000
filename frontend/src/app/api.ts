@@ -120,6 +120,12 @@ export interface DailyDigestResponse {
   suggested_interests: TopicSuggestion[];
 }
 
+export interface DemoResetResponse {
+  user_id: string;
+  status: "cleared";
+  deleted: Record<string, number>;
+}
+
 export interface PreferencesResponse {
   user_id: string;
   preferences: Record<BackendCategory, boolean>;
@@ -298,6 +304,13 @@ export function getDailyDigest(userId: string, digestDate: string): Promise<Dail
     `/api/digest/daily?date=${encodeURIComponent(digestDate)}`,
     { userId },
   );
+}
+
+export function resetDemoData(userId: string): Promise<DemoResetResponse> {
+  return request<DemoResetResponse>("/api/demo/reset", {
+    method: "POST",
+    userId,
+  });
 }
 
 export function getPreferences(userId: string): Promise<PreferencesResponse> {

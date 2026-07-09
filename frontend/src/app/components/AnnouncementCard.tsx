@@ -182,23 +182,23 @@ export function AnnouncementCard({
             <>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                TODO demo
+                TODO preview
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-muted-foreground">
                 <CalendarPlus className="h-3.5 w-3.5" />
-                Calendar demo
+                Calendar preview
               </span>
               <button
                 onClick={() => {
                   setSchoolworkAdded(true);
-                  toast.success("Schoolwork demo added", {
+                  toast.success("Schoolwork preview added", {
                     description: "Local tasks/calendar state only.",
                   });
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full border border-[#10b981]/35 px-2.5 py-1 text-xs text-[#34d399] transition-colors hover:bg-[#10b981]/10"
               >
                 <CalendarPlus className="h-3.5 w-3.5" />
-                Add demo
+                Add preview
               </button>
             </>
           )}

@@ -81,7 +81,7 @@ function greeting(): ChatMsg {
   return {
     id: uid(),
     role: "assistant",
-    text: "Hi, I'm your **SwiftMemo copilot**. I search your private, tenant-scoped archive to answer questions about deadlines, requirements, and where to submit. Pick a suggestion below or ask me anything.",
+    text: "Hi, I'm your **SwiftMemo copilot**. I search your private, profile-scoped archive to answer questions about deadlines, requirements, and where to submit. Pick a suggestion below or ask me anything.",
   };
 }
 

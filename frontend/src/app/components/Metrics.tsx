@@ -12,7 +12,7 @@ interface MetricsProps {
 }
 
 const cards = (m: Pick<MetricsProps, "visible" | "critical" | "hidden">) => [
-  { id: "visible" as const, label: "Visible in feed", value: m.visible, icon: Inbox, color: "#10b981" },
+  { id: "visible" as const, label: "Showing", value: m.visible, icon: Inbox, color: "#10b981" },
   {
     id: "critical" as const,
     label: "Critical deadlines",
@@ -20,7 +20,7 @@ const cards = (m: Pick<MetricsProps, "visible" | "critical" | "hidden">) => [
     icon: AlarmClock,
     color: "#f43f5e",
   },
-  { id: "filtered" as const, label: "Filtered out", value: m.hidden, icon: EyeOff, color: "#94a3b8" },
+  { id: "filtered" as const, label: "Not Shown", value: m.hidden, icon: EyeOff, color: "#94a3b8" },
 ];
 
 export function Metrics(props: MetricsProps) {

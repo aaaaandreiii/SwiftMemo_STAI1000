@@ -76,7 +76,7 @@ export function Header({
         </span>
       </div>
 
-      {/* Tenant selector */}
+      {/* Profile selector */}
       <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border border-border bg-secondary/40 py-1 pl-1 pr-2.5 outline-none transition-colors hover:border-[#10b981]/40">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-[#006432] to-[#10b981] text-xs font-semibold text-white">
@@ -87,7 +87,7 @@ export function Header({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60 glass">
           <DropdownMenuLabel className="text-xs text-muted-foreground">
-            Active tenant
+            Current User
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {TENANTS.map((t) => (

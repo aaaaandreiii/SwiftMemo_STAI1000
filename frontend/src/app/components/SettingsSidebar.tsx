@@ -10,12 +10,14 @@ import {
   RefreshCw,
   Save,
   ShieldAlert,
+  Trash2,
   Unplug,
   UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { IngestedEmail, TenantProfile } from "../api";
+import { emailKindLabel } from "../data";
 
 interface SettingsSidebarProps {
   open: boolean;
@@ -25,9 +27,11 @@ interface SettingsSidebarProps {
   notesError: string | null;
   profile: TenantProfile | null;
   profileSaving: boolean;
+  resettingDemoData: boolean;
   onClose: () => void;
   onRefreshNotes: () => void;
   onSaveProfile: (profile: Omit<TenantProfile, "user_id" | "updated_at">) => void;
+  onResetDemoData: () => void;
 }
 
 const formatDate = (value: string) =>
@@ -61,6 +65,13 @@ const splitList = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const safetyReasonText = (reason: string) =>
+  reason
+    .replace(/\bLMS notification\b/gi, "Canvas Updates")
+    .replace(/\bInstitutional email\b/gi, "Official DLSU Email")
+    .replace(/\bService notification\b/gi, "Account/Service Update")
+    .replace(/\bGuardrails?\b/gi, "Safety Checks");
+
 export function SettingsSidebar({
   open,
   tenantName,
@@ -69,9 +80,11 @@ export function SettingsSidebar({
   notesError,
   profile,
   profileSaving,
+  resettingDemoData,
   onClose,
   onRefreshNotes,
   onSaveProfile,
+  onResetDemoData,
 }: SettingsSidebarProps) {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailSyncing, setGmailSyncing] = useState(false);
@@ -84,7 +97,7 @@ export function SettingsSidebar({
 
   const connectGmail = () => {
     setGmailConnected(true);
-    toast.success("Gmail demo connected", {
+    toast.success("Gmail preview connected", {
       description: "UI-only state. No OAuth account was linked.",
     });
   };
@@ -94,15 +107,15 @@ export function SettingsSidebar({
     setGmailSyncing(true);
     window.setTimeout(() => {
       setGmailSyncing(false);
-      toast.success("Gmail demo synced", {
-        description: "Mock sync completed. No messages left this browser.",
+      toast.success("Gmail preview synced", {
+        description: "Preview sync completed. No messages left this browser.",
       });
     }, 900);
   };
 
   const disconnectGmail = () => {
     setGmailConnected(false);
-    toast("Gmail demo disconnected", {
+    toast("Gmail preview disconnected", {
       description: "Local connection state cleared.",
     });
   };
@@ -110,7 +123,7 @@ export function SettingsSidebar({
   const toggleNotifications = () => {
     setNotificationsOn((value) => {
       const next = !value;
-      toast(next ? "Demo notifications enabled" : "Demo notifications paused", {
+      toast(next ? "Preview notifications enabled" : "Preview notifications paused", {
         description: "No browser push subscription was created.",
       });
       return next;
@@ -126,6 +139,14 @@ export function SettingsSidebar({
       schedules: splitList(profileDraft.schedules),
       freeform_context: profileDraft.freeform_context.trim(),
     });
+  };
+
+  const resetDemoData = () => {
+    if (resettingDemoData) return;
+    const confirmed = window.confirm(
+      "Clear processed preview data for this profile? Profile and preferences are kept.",
+    );
+    if (confirmed) onResetDemoData();
   };
 
   if (!open) return null;
@@ -165,7 +186,7 @@ export function SettingsSidebar({
         <div className="flex-1 space-y-4 overflow-y-auto pr-1">
           <section className="space-y-3">
             <p className="font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-              Integrations
+              Connected Accounts
             </p>
             <div className="space-y-2 rounded-xl border border-border bg-secondary/25 p-2">
               {!gmailConnected ? (
@@ -193,7 +214,7 @@ export function SettingsSidebar({
                   <button
                     onClick={disconnectGmail}
                     className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-[#f43f5e]/50 hover:text-[#f43f5e]"
-                    title="Disconnect Gmail demo"
+                    title="Disconnect Gmail preview"
                   >
                     <Unplug className="h-3.5 w-3.5" />
                   </button>
@@ -205,7 +226,7 @@ export function SettingsSidebar({
                     gmailConnected ? "bg-[#10b981]" : "bg-muted-foreground"
                   }`}
                 />
-                {gmailConnected ? "Demo connection active" : "No real Google account linked"}
+                {gmailConnected ? "Preview connection active" : "No real Google account linked"}
               </div>
             </div>
 
@@ -236,9 +257,30 @@ export function SettingsSidebar({
               </button>
               <p className="px-1 text-[0.68rem] text-muted-foreground">
                 {notificationsOn
-                  ? "Demo status: local alerts enabled."
-                  : "Demo permission only. Browser Push API is not subscribed."}
+                  ? "Preview status: local alerts enabled."
+                  : "Preview permission only. Browser Push API is not subscribed."}
               </p>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <p className="font-mono text-[0.7rem] uppercase tracking-widest text-muted-foreground">
+              Preview Reset
+            </p>
+            <div className="rounded-xl border border-[#f43f5e]/25 bg-[#f43f5e]/5 p-2">
+              <button
+                onClick={resetDemoData}
+                disabled={resettingDemoData}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#f43f5e]/35 bg-[#f43f5e]/10 px-3 py-2 text-xs text-[#fda4af] transition-all hover:border-[#f43f5e]/70 hover:bg-[#f43f5e]/15 disabled:opacity-60"
+                title="Clear processed preview data"
+              >
+                {resettingDemoData ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                {resettingDemoData ? "Clearing..." : "Clear Processed Preview Data"}
+              </button>
             </div>
           </section>
 
@@ -405,7 +447,7 @@ export function SettingsSidebar({
 
             {!loadingNotes && !notesError && processingNotes.length === 0 && (
               <div className="rounded-lg border border-border bg-secondary/20 px-3 py-4 text-sm text-muted-foreground">
-                No skipped or error emails for this tenant.
+                No skipped or error emails for this profile.
               </div>
             )}
 
@@ -428,12 +470,12 @@ export function SettingsSidebar({
                       </p>
                     </div>
                   </div>
-                  <p className="text-xs text-[#fda4af]">{item.guardrail.reason}</p>
+                  <p className="text-xs text-[#fda4af]">{safetyReasonText(item.guardrail.reason)}</p>
                   <p className="mt-1 line-clamp-3 text-[0.72rem] leading-relaxed text-muted-foreground">
                     {item.email.body}
                   </p>
                   <p className="mt-2 font-mono text-[0.65rem] uppercase tracking-widest text-muted-foreground">
-                    {item.guardrail.email_kind.replace(/_/g, " ")} · Confidence{" "}
+                    {emailKindLabel(item.guardrail.email_kind)} · Confidence{" "}
                     {Math.round(item.guardrail.confidence * 100)}%
                   </p>
                 </article>

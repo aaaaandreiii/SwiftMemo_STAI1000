@@ -57,7 +57,7 @@ Rules:
 - Do not invent a deadline. Use null if there is no explicit deadline.
 - urgency_score must be an integer from 1 to 5, where 5 is most urgent.
 - Keep summaries factual and based only on the email content.
-- Support school announcements, personal emails, LMS/service notifications,
+- Support school announcements, personal emails, Canvas Updates and account/service updates,
   promotions, student organization emails, administrative updates, deadlines,
   and schedule-related messages.
 """
@@ -220,7 +220,7 @@ def process_email_fast(
         result=summary,
         summary_id=summary_id,
         visible_in_feed=visible,
-        tool_observation="Fast deterministic processing for mock/feed batches.",
+        tool_observation="Fast deterministic processing for preview/feed batches.",
     )
 
 

@@ -132,7 +132,7 @@ export function AudioPlayer({ track, tenantId, onClose }: AudioPlayerProps) {
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="truncate text-sm">
                 <span className="text-muted-foreground">
-                  {loading ? "Loading audio" : fallback ? "Demo audio fallback" : "Briefing"} ·{" "}
+                  {loading ? "Loading audio" : fallback ? "Preview audio" : "Briefing"} ·{" "}
                 </span>
                 {track.title}
               </span>

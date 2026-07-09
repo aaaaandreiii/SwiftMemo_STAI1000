@@ -1,8 +1,8 @@
 # SwiftMemo
 
-SwiftMemo is an agentic AI email digest MVP. It accepts readable user emails, classifies them by kind, turns them into structured summaries, discovers recurring interests, builds an in-app daily digest, answers tenant-private archive questions, and evaluates rubric metrics with MLflow.
+SwiftMemo is an agentic AI email digest MVP. It accepts readable user emails, classifies them by kind, turns them into structured summaries, discovers recurring interests, builds an in-app daily digest, answers profile-private archive questions, and evaluates rubric metrics with MLflow.
 
-The Midterm MVP uses a required `X-User-ID` header as tenant identity. This is not production authentication; it is the isolation boundary for persisted emails, summaries, preferences, chat memory, feedback, and Chroma metadata.
+The Midterm MVP uses a required `X-User-ID` header as profile identity. This is not production authentication; it is the isolation boundary for persisted emails, summaries, preferences, chat memory, feedback, and Chroma metadata.
 
 ## Setup
 
@@ -48,7 +48,7 @@ curl http://your-ollama-server:11434/api/tags
 ```mermaid
 flowchart LR
     UI[React/Vite UI] --> API[FastAPI Backend]
-    API --> SQLite[(SQLite Tenant Store)]
+    API --> SQLite[(SQLite Profile Store)]
     API --> Classifier[Email Classifier]
     API --> Agent[LangGraph Processing Graph]
     API --> Chat[RAG Chat and Draft Service]
@@ -75,19 +75,19 @@ X-User-ID: andrei
 Endpoints:
 
 - `GET /health` checks service status.
-- `POST /api/ingest` ingests one email or mock email fixtures for the tenant.
+- `POST /api/ingest` ingests one email or preview email fixtures for the profile.
 - `POST /api/process` runs classification, LangGraph extraction, preference routing, persistence, and vector indexing.
-- `GET /api/summaries?visible_only=true` returns structured summaries scoped to the tenant.
+- `GET /api/summaries?visible_only=true` returns structured summaries scoped to the profile.
 - `GET /api/processing-notes` lists only skipped/error records, such as unreadable emails.
-- `GET /api/profile` and `PUT /api/profile` manage tenant role, affiliation, interests, deadlines, schedule cues, and freeform context.
+- `GET /api/profile` and `PUT /api/profile` manage profile role, affiliation, interests, deadlines, schedule cues, and freeform context.
 - `GET /api/topics/suggestions` lists discovered recurring topics; `POST /api/topics/{topic_id}/approve` or `/dismiss` records the user's decision.
 - `GET /api/digest/daily?date=YYYY-MM-DD` returns important emails, deadlines, personal/service updates, recurring topics, and suggested interests for a selected date.
 - `POST /api/chat` answers from Chroma with `where={"user_id": ...}` and SQLite chat memory by `(user_id, session_id)`.
 - `GET /api/preferences` and `PUT /api/preferences` manage category toggles. `events` defaults off; `academic` defaults on.
-- `POST /api/draft` creates a professional contextual reply draft from tenant-filtered retrieval.
+- `POST /api/draft` creates a professional contextual reply draft from profile-filtered retrieval.
 - `POST /api/feedback` records Phase 2 classification override data.
 - `GET /api/summary/audio/{summary_id}` returns a placeholder WAV audio response for Phase 2.
-- `WebSocket /ws/notifications/{user_id}` exposes the Phase 2 notification stub.
+- `WebSocket /ws/notifications/{user_id}` exposes the Phase 2 notification preview.
 
 Example:
 
@@ -123,21 +123,21 @@ It prints JSON and logs to MLflow when tracking is reachable:
 
 ## Development Notes
 
-- Mock email fixtures live in `data/mock_hdas.json`.
+- Preview email fixtures live in `data/mock_hdas.json`.
 - The React frontend lives in `frontend/` and calls FastAPI through relative `/api` and `/health` paths. In Docker, Vite proxies those paths to `http://api:8000`.
 - Real received emails should be sanitized into fixture JSON instead of connecting Gmail directly for this Midterm MVP.
 - The current fixture is processed as all-email input. Canvas/Instructure notifications, personal messages, service notices, and promotions are classified and summarized instead of being blocked; only unreadable records should appear in processing notes.
-- `backend/database.py` is the SQLite source of truth for tenant-scoped records.
+- `backend/database.py` is the SQLite source of truth for profile-scoped records.
 - `backend/agents.py` contains the LangGraph flow: validation, structured extraction, preferences, vector indexing, and draft helper.
 - `backend/rag.py` stores mandatory vector metadata: `user_id`, `email_id`, `subject`, `date`, `sender`, `category`, and `visible_in_feed`.
-- If the configured LLM or embedding service is unavailable, deterministic fallback paths keep tests and demos usable.
-- The ingestion helper accepts a tenant header:
+- If the configured LLM or embedding service is unavailable, deterministic preview paths keep tests and previews usable.
+- The ingestion helper accepts a profile header:
 
 ```bash
 python scripts/ingest_mock_data.py --api http://localhost:8000 --user-id andrei
 ```
 
-To load and process the full mock fixture from the API:
+To load and process the full preview fixture from the API:
 
 ```bash
 curl -s -X POST http://localhost:8000/api/ingest \

@@ -15,6 +15,7 @@ from backend.rag import RAG_SERVICE
 from backend.schemas import (
     ChatRequest,
     ChatResponse,
+    DemoResetResponse,
     DraftRequest,
     DraftResponse,
     FeedbackRequest,
@@ -202,6 +203,16 @@ def daily_digest(
     return DailyDigestResponse.model_validate(DATABASE.daily_digest(user_id, digest_date))
 
 
+@app.post("/api/demo/reset", response_model=DemoResetResponse)
+def reset_demo_data(user_id: str = Depends(current_user)) -> DemoResetResponse:
+    try:
+        RAG_SERVICE.clear_user_index(user_id)
+        deleted = DATABASE.clear_demo_data(user_id)
+        return DemoResetResponse(user_id=user_id, status="cleared", deleted=deleted)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, user_id: str = Depends(current_user)) -> ChatResponse:
     try:
@@ -257,12 +268,12 @@ def audio_summary(summary_id: str, user_id: str = Depends(current_user)) -> Resp
         raise HTTPException(status_code=404, detail=f"Unknown summary_id: {summary_id}")
     text = f"{item['title']}. {item['summary']}"
     with telemetry_run(
-        operation="audio_summary_stub",
+        operation="audio_summary_preview",
         params={"summary_id": summary_id, "user_id": user_id, "fallback": True},
         prompt=text,
     ) as run:
         audio = _placeholder_wav()
-        run["response"] = "Generated placeholder WAV fallback."
+        run["response"] = "Generated placeholder WAV preview."
     return Response(
         content=audio,
         media_type="audio/wav",
@@ -279,7 +290,7 @@ async def notification_socket(websocket: WebSocket, user_id: str) -> None:
     await websocket.send_json(
         {
             "user_id": user_id,
-            "status": "stubbed",
+            "status": "preview",
             "message": "Deadline notification worker is reserved for Phase 2.",
         }
     )

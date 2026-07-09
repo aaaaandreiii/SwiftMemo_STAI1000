@@ -222,6 +222,12 @@ class DailyDigestResponse(BaseModel):
     suggested_interests: list[TopicSuggestion]
 
 
+class DemoResetResponse(BaseModel):
+    user_id: str
+    status: Literal["cleared"]
+    deleted: dict[str, int]
+
+
 class PreferencesUpdateRequest(BaseModel):
     preferences: dict[str, bool]
 
@@ -279,4 +285,4 @@ class NotificationPayload(BaseModel):
     user_id: str
     summary_id: str
     deadline_date: date | None = None
-    status: str = "stubbed"
+    status: str = "preview"

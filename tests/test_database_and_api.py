@@ -175,6 +175,57 @@ def test_processing_notes_endpoint_lists_only_current_tenant_skips(monkeypatch, 
     assert payload["items"][0]["guardrail"]["reason"] == "legacy skipped record"
 
 
+def test_demo_reset_clears_tenant_archive_but_keeps_profile_preferences(monkeypatch, tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    monkeypatch.setattr(main, "DATABASE", db)
+    user_id = "tenant-a"
+    email = sample_email("reset-a", subject="HDA: Reset A")
+    other_email = sample_email("reset-b", subject="HDA: Reset B")
+    db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+    db.save_ingested("tenant-b", IngestedEmail(email=other_email, guardrail=sample_guardrail()))
+    summary_id = db.save_triage(user_id, email.id, sample_summary(), True)
+    db.add_chat_message(user_id, "default", "user", "What is due?")
+    db.save_feedback(user_id, summary_id, email.id, "administrative", "demo recategorization")
+    db.create_notification_job(user_id, summary_id, "2026-07-15")
+    db.set_preferences(user_id, {"events": False, "academic": True})
+    db.set_profile(
+        user_id,
+        role="Student",
+        affiliation="CCS",
+        interests=["Canvas"],
+        deadlines=["Enrollment"],
+        schedules=[],
+        freeform_context="Demo profile",
+    )
+
+    class FakeRagService:
+        cleared: list[str] = []
+
+        def clear_user_index(self, cleared_user_id: str) -> None:
+            self.cleared.append(cleared_user_id)
+
+    fake_rag = FakeRagService()
+    monkeypatch.setattr(main, "RAG_SERVICE", fake_rag)
+
+    client = TestClient(main.app)
+    response = client.post("/api/demo/reset", headers={"X-User-ID": user_id})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "cleared"
+    assert payload["deleted"]["emails"] == 1
+    assert payload["deleted"]["triage_summaries"] == 1
+    assert fake_rag.cleared == [user_id]
+    assert db.get_email(user_id, email.id) is None
+    assert db.list_summaries(user_id, visible_only=False) == []
+    assert db.chat_history(user_id, "default", 10) == []
+    assert db.feedback_count(user_id) == 0
+    assert db.get_email("tenant-b", other_email.id) is not None
+    assert db.get_preferences(user_id)["academic"] is True
+    assert db.get_preferences(user_id)["events"] is False
+    assert db.get_profile(user_id)["role"] == "Student"
+
+
 def test_ingest_endpoint_accepts_all_readable_email_kinds(monkeypatch, tmp_path):
     db = SwiftMemoDB(tmp_path / "swiftmemo.db")
     monkeypatch.setattr(main, "DATABASE", db)

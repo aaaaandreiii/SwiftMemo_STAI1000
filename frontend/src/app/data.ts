@@ -48,6 +48,23 @@ export const categoryByBackend = (key: BackendCategory): Category =>
 export const toBackendCategory = (key: CategoryKey): BackendCategory =>
   categoryMeta(key).backendKey;
 
+const EMAIL_KIND_LABELS: Record<string, string> = {
+  institutional: "Official DLSU Email",
+  institutional_email: "Official DLSU Email",
+  lms_notification: "Canvas Updates",
+  service_notification: "Account/Service Update",
+};
+
+export function emailKindLabel(kind: string): string {
+  const normalized = kind.toLowerCase();
+  if (EMAIL_KIND_LABELS[normalized]) return EMAIL_KIND_LABELS[normalized];
+  return normalized
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export const preferencesFromBackend = (
   preferences: Partial<Record<BackendCategory, boolean>>,
 ): Record<CategoryKey, boolean> =>
