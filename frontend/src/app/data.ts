@@ -8,6 +8,8 @@ import {
   Presentation,
   Globe2,
   Library,
+  Megaphone,
+  ShieldX,
   Cpu,
   Building2,
   CircleHelp,
@@ -25,6 +27,8 @@ export type CategoryKey =
   | "Webinars, Seminars, Workshops"
   | "Exchange Student Programs"
   | "Library"
+  | "Advertisement"
+  | "Spam"
   | "IT Services"
   | "Administrative"
   | "Other";
@@ -56,6 +60,8 @@ export const CATEGORIES: Category[] = [
     color: "#60a5fa",
   },
   { key: "Library", backendKey: "library", icon: Library, color: "#f59e0b" },
+  { key: "Advertisement", backendKey: "advertisement", icon: Megaphone, color: "#fb923c" },
+  { key: "Spam", backendKey: "spam", icon: ShieldX, color: "#ef4444" },
   { key: "IT Services", backendKey: "it_services", icon: Cpu, color: "#22d3ee" },
   { key: "Administrative", backendKey: "administrative", icon: Building2, color: "#94a3b8" },
   { key: "Other", backendKey: "other", icon: CircleHelp, color: "#cbd5e1" },

@@ -8,6 +8,8 @@ export const BACKEND_CATEGORIES = [
   "webinars_seminars_workshops",
   "exchange_programs",
   "library",
+  "advertisement",
+  "spam",
   "it_services",
   "administrative",
   "other",

@@ -7,7 +7,7 @@ import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import type { FeedWorkflowState } from "./components/Sidebar";
 import { SettingsSidebar } from "./components/SettingsSidebar";
-import { Timeline, type TimelineDay } from "./components/Timeline";
+import { Timeline, type CalendarDeadlineItem, type TimelineDay } from "./components/Timeline";
 import { Metrics, type MetricFilter } from "./components/Metrics";
 import { DailyDigest } from "./components/DailyDigest";
 import { AnnouncementCard } from "./components/AnnouncementCard";
@@ -337,6 +337,23 @@ export default function App() {
       };
     });
   }, [items, prefs]);
+
+  const timelineDeadlineItems: CalendarDeadlineItem[] = useMemo(
+    () =>
+      items
+        .filter((a) => a.dueDate)
+        .filter((a) => !hidden.includes(a.id))
+        .filter((a) => prefs[a.category])
+        .filter((a) => !matchedCustomTopics(a, customTopics).some((topic) => !topic.enabled))
+        .map((a) => ({
+          id: a.id,
+          title: a.title,
+          dueDate: a.dueDate,
+          urgency: a.urgency,
+          category: a.category,
+        })),
+    [items, hidden, prefs, customTopics],
+  );
 
   // ---- actions ----
   const togglePref = async (key: CategoryKey) => {
@@ -730,7 +747,12 @@ export default function App() {
                 </button>
               </div>
 
-              <Timeline days={timelineDays} selected={selectedDay} onSelect={setSelectedDay} />
+              <Timeline
+                days={timelineDays}
+                deadlineItems={timelineDeadlineItems}
+                selected={selectedDay}
+                onSelect={setSelectedDay}
+              />
 
               <DailyDigest
                 digest={dailyDigest}

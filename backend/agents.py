@@ -48,7 +48,7 @@ Extract the email update into this exact JSON schema:
   "title": "short title",
   "summary": "1-2 sentence action-focused summary",
   "deadline_date": "YYYY-MM-DD or null",
-  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | it_services | administrative | other",
+  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | advertisement | spam | it_services | administrative | other",
   "urgency_score": 1
 }
 
@@ -68,7 +68,7 @@ REPAIR_PROMPT = """Convert the extraction into valid JSON for this exact schema:
   "title": "short title",
   "summary": "1-2 sentence action-focused summary",
   "deadline_date": "YYYY-MM-DD or null",
-  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | it_services | administrative | other",
+  "category": "academic | finance | campus_access | health_safety | events | canvas_tasks | webinars_seminars_workshops | exchange_programs | library | advertisement | spam | it_services | administrative | other",
   "urgency_score": 1
 }
 
@@ -369,6 +369,10 @@ def _extract_deadline(email: EmailRecord) -> date | None:
 def _classify_category(email: EmailRecord):
     text = f"{email.subject} {email.body}".lower()
     sender = email.sender.lower()
+    if _is_spam_email(text, sender):
+        return "spam"
+    if _is_advertisement_email(text, sender):
+        return "advertisement"
     if _is_canvas_task_notification(email):
         return "canvas_tasks"
     if any(term in text for term in ("daily mass", "daily masses", "masses on campus")):
@@ -419,6 +423,58 @@ def _classify_category(email: EmailRecord):
         if any(keyword in text for keyword in keywords):
             return category
     return "other"
+
+
+def _is_advertisement_email(text: str, sender: str) -> bool:
+    sender_marketing = any(
+        token in sender
+        for token in (
+            "marketing",
+            "newsletter",
+            "deals",
+            "promo",
+            "sales",
+            "offers",
+        )
+    )
+    promotional_terms = (
+        "limited time",
+        "flash sale",
+        "laptop sale",
+        "discount",
+        "discounted",
+        "promo",
+        "promotion",
+        "voucher",
+        "coupon",
+        "special offer",
+        "exclusive offer",
+        "buy now",
+        "shop now",
+        "unsubscribe",
+    )
+    return sender_marketing or any(term in text for term in promotional_terms)
+
+
+def _is_spam_email(text: str, sender: str) -> bool:
+    spam_terms = (
+        "act now",
+        "claim your prize",
+        "congratulations you won",
+        "guaranteed winner",
+        "lottery",
+        "wire transfer",
+        "crypto investment",
+        "free money",
+        "urgent action required",
+        "verify your account immediately",
+        "password expires today",
+        "click here to avoid suspension",
+        "suspended account",
+        "unusual sign in",
+    )
+    suspicious_sender = any(token in sender for token in ("unknown", "winner", "lottery"))
+    return suspicious_sender or any(term in text for term in spam_terms)
 
 
 def _is_canvas_task_notification(email: EmailRecord) -> bool:

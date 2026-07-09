@@ -532,7 +532,7 @@ class SwiftMemoDB:
 
     def daily_digest(self, user_id: str, digest_date: date) -> dict[str, Any]:
         target = digest_date.isoformat()
-        items = self._digest_items(user_id)
+        items = [item for item in self._digest_items(user_id) if item["visible_in_feed"]]
         today_items = [item for item in items if str(item["email_date"])[:10] == target]
         deadlines = [item for item in items if item["deadline_date"] == target]
         digest_scope = _unique_digest_items(today_items + deadlines)
@@ -559,7 +559,7 @@ class SwiftMemoDB:
             item
             for item in today_items
             if item["email_kind"]
-            in {"personal", "lms_notification", "service_notification", "promotional"}
+            in {"personal", "lms_notification", "service_notification"}
         ]
         personal_service_updates = _rank_digest_items(personal_service_updates)
         topics = self.list_topic_suggestions(user_id, statuses=("active", "pending"))
@@ -601,6 +601,8 @@ class SwiftMemoDB:
         preferences = {category: True for category in CATEGORIES}
         preferences["events"] = False
         preferences["webinars_seminars_workshops"] = False
+        preferences["advertisement"] = False
+        preferences["spam"] = False
         rows = self._fetchall(
             "SELECT category, enabled FROM user_preferences WHERE user_id = ?",
             (user_id,),

@@ -744,6 +744,8 @@ def test_new_preferences_default_and_control_feed_visibility(tmp_path):
     assert preferences["webinars_seminars_workshops"] is False
     assert preferences["exchange_programs"] is True
     assert preferences["library"] is True
+    assert preferences["advertisement"] is False
+    assert preferences["spam"] is False
 
     email = sample_email("canvas-pref", subject="Assignment Graded: Lab")
     db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
@@ -755,3 +757,46 @@ def test_new_preferences_default_and_control_feed_visibility(tmp_path):
     archived = db.list_summaries(user_id, visible_only=False)
     assert archived[0]["category"] == "canvas_tasks"
     assert archived[0]["visible_in_feed"] is False
+
+
+def test_advertisement_and_spam_classify_and_default_hidden_from_feed_and_digest(tmp_path):
+    db = SwiftMemoDB(tmp_path / "swiftmemo.db")
+    user_id = "tenant-a"
+    digest_day = date(2026, 7, 9)
+    ad_email = EmailRecord(
+        id="ad-1",
+        sender="deals@example.com",
+        subject="Limited time laptop sale",
+        date=datetime.fromisoformat("2026-07-09T09:00:00+08:00"),
+        body="Flash sale for discounted accessories. Use this voucher today. Unsubscribe anytime.",
+    )
+    spam_email = EmailRecord(
+        id="spam-1",
+        sender="unknown-winner@example.com",
+        subject="Claim your prize now",
+        date=datetime.fromisoformat("2026-07-09T10:00:00+08:00"),
+        body="Congratulations you won. Click here to avoid suspension and claim your prize.",
+    )
+
+    ad_summary = agents.heuristic_extract_summary(ad_email)
+    spam_summary = agents.heuristic_extract_summary(spam_email)
+
+    assert ad_summary.category == "advertisement"
+    assert spam_summary.category == "spam"
+    assert db.category_enabled(user_id, "advertisement") is False
+    assert db.category_enabled(user_id, "spam") is False
+
+    for email, summary in ((ad_email, ad_summary), (spam_email, spam_summary)):
+        db.save_ingested(user_id, IngestedEmail(email=email, guardrail=sample_guardrail()))
+        db.save_triage(user_id, email.id, summary, db.category_enabled(user_id, summary.category))
+
+    assert db.list_summaries(user_id, visible_only=True) == []
+    archived = db.list_summaries(user_id, visible_only=False)
+    assert {item["category"] for item in archived} == {"advertisement", "spam"}
+    assert all(item["visible_in_feed"] is False for item in archived)
+
+    digest = db.daily_digest(user_id, digest_day)
+    assert digest["recommended_for_you"] == []
+    assert digest["urgent_unmatched"] == []
+    assert digest["important_emails"] == []
+    assert digest["personal_service_updates"] == []
